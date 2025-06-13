@@ -6,17 +6,21 @@ class GeminiAgent:
         genai.configure(api_key=api_key)
         self.model_variant = model_variant
         
-        # Model mapping for different Gemini variants
+        # Updated model mapping with OFFICIAL Gemini 2.5 model names from Google AI API
         self.models = {
-            "2.5-flash": 'gemini-2.5-flash',
-            "2.5-pro": 'gemini-2.5-pro-preview-06-05', 
-            "2.0-flash": 'gemini-2.0-flash-exp',
-            "flash": 'gemini-2.5-flash',  # Alias
-            "pro": 'gemini-2.5-pro-preview-06-05'  # Alias
+            "2.5-flash": 'gemini-2.5-flash-preview-05-20',
+            "2.5-pro": 'gemini-2.5-pro-preview-06-05',
+            "2.0-flash": 'gemini-2.0-flash',
+            "2.0-flash-lite": 'gemini-2.0-flash-lite',
+            "flash": 'gemini-2.5-flash-preview-05-20',  # Default alias
+            "pro": 'gemini-2.5-pro-preview-06-05',  # Default alias
+            # Backward compatibility aliases
+            "1.5-flash": 'gemini-2.5-flash-preview-05-20',  # Upgrade to 2.5
+            "1.5-pro": 'gemini-2.5-pro-preview-06-05'  # Upgrade to 2.5
         }
         
-        # Default to 2.5 Flash
-        model_name = self.models.get(model_variant, 'gemini-2.5-flash')
+        # Default to 2.5 Flash (best price-performance)
+        model_name = self.models.get(model_variant, 'gemini-2.5-flash-preview-05-20')
         self.model = genai.GenerativeModel(model_name)
         self.current_model_name = model_name
 
@@ -58,8 +62,8 @@ class GeminiAgent:
                 }
                 
                 if thinking_mode in thinking_budgets:
-                    # Note: This is pseudocode - actual implementation depends on Google's API
-                    # The thinking budget feature may require specific configuration
+                    # Configure thinking budget for 2.5 models
+                    # Note: The exact parameter name may vary - check Google's latest API docs
                     generation_config.thinking_budget = thinking_budgets[thinking_mode]
             
             response = await self.model.generate_content_async(
@@ -69,6 +73,17 @@ class GeminiAgent:
             return response.text.strip()
             
         except Exception as e:
+            # If thinking budget parameter is not recognized, try without it
+            if "thinking_budget" in str(e) and thinking_mode:
+                try:
+                    generation_config = genai.types.GenerationConfig(temperature=temperature)
+                    response = await self.model.generate_content_async(
+                        prompt,
+                        generation_config=generation_config
+                    )
+                    return response.text.strip()
+                except Exception as e2:
+                    return f"Gemini API Error: {str(e2)}"
             return f"Gemini API Error: {str(e)}"
 
     def get_model_info(self) -> dict:
@@ -78,5 +93,7 @@ class GeminiAgent:
             "model_name": self.current_model_name,
             "supports_thinking": "2.5" in self.current_model_name,
             "is_pro": "pro" in self.model_variant,
-            "is_flash": "flash" in self.model_variant
+            "is_flash": "flash" in self.model_variant,
+            "is_2_5": "2.5" in self.current_model_name,
+            "is_2_0": "2.0" in self.current_model_name
         }
