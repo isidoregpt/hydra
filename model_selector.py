@@ -294,4 +294,11 @@ class ModelSelector:
 
     def get_model_info(self, model: str) -> Dict[str, Any]:
         """Get detailed information about a model"""
-        return
+        return self.model_capabilities.get(model, {
+            "description": "Unknown model",
+            "strengths": [],
+            "thinking_modes": None,
+            "cost": "unknown",
+            "speed": "unknown",
+            "context_window": 0
+        })
