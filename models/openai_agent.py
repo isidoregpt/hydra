@@ -1,3 +1,5 @@
+import openai
+
 class OpenAIAgent:
     def __init__(self, api_key):
         self.client = openai.OpenAI(api_key=api_key)
