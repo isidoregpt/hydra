@@ -6,7 +6,7 @@ class OpenAIAgent:
         # Use AsyncOpenAI for proper async support
         self.client = openai.AsyncOpenAI(api_key=api_key)
 
-    async def chat(self, prompt, max_tokens=1024, temperature=0.7):
+    async def chat(self, prompt, max_tokens=2048, temperature=0.7):
         """
         Async chat method for OpenAI API calls.
         
