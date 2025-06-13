@@ -11,7 +11,7 @@ from memory.memory_manager import MemoryManager
 from file_manager import FileManager, FileAnalysisInterface
 
 st.set_page_config(page_title="Hydra v3 - AI Orchestrator", layout="wide")
-st.title("🧠 Hydra v3 - Claude-Orchestrated Multi-Agent System")
+st.title("🧠 Hydra v3 - Claude Opus 4 Orchestrated Multi-Agent System")
 
 # Initialize session state
 if "session_id" not in st.session_state:
@@ -35,22 +35,22 @@ with st.sidebar:
     with st.expander("Model Configuration"):
         primary_model = st.selectbox(
             "Primary Orchestrator",
-            ["claude-4", "gpt-4o", "gemini-2.5-flash", "gemini-2.5-pro"],
+            ["claude-opus-4", "claude-sonnet-4", "gpt-4o", "gemini-2.5-pro"],
             index=0,
-            help="The main model that orchestrates and performs work"
+            help="The main model that orchestrates and performs work. Claude Opus 4 recommended for best results."
         )
         
         auto_consultation = st.checkbox(
-            "Auto Consultation Mode", 
+            "Multi-Round Consultation", 
             value=True,
-            help="Let primary model decide when to consult other models"
+            help="Enable collaborative multi-round consultation with cross-review and consensus building"
         )
         
         available_consultants = st.multiselect(
             "Available Consultant Models",
-            ["gpt-4o", "gemini-2.5-pro", "gemini-2.5-flash"],
-            default=["gpt-4o", "gemini-2.5-pro"],
-            help="Models available for consultation"
+            ["claude-sonnet-4", "gpt-4o", "gemini-2.5-pro", "gemini-2.5-flash"],
+            default=["claude-sonnet-4", "gpt-4o", "gemini-2.5-pro"],
+            help="Models available for collaborative consultation"
         )
 
 # Main interface - Two columns
@@ -120,7 +120,7 @@ if not all([openai_key, anthropic_key, gemini_key]):
 user_input = st.text_area(
     "What would you like me to analyze or help you with?",
     value=st.session_state.get("auto_query", ""),
-    placeholder="Examples:\n• Analyze the uploaded code for security issues\n• Review the data structure in my CSV files\n• Explain what this codebase does\n• Find potential bugs in the uploaded files",
+    placeholder="Examples:\n• Analyze the uploaded code for security issues\n• Review the data structure in my CSV files\n• Explain what this codebase does\n• Provide editorial feedback on my manuscript\n• Debug this code issue",
     height=120,
     key="main_query"
 )
@@ -135,18 +135,18 @@ with st.expander("⚙️ Advanced Options"):
     
     with col1:
         max_consultations = st.slider(
-            "Max Consultations per Task", 
-            min_value=0, 
-            max_value=5, 
-            value=3,
-            help="Maximum number of other models to consult"
+            "Max Consultations per Round", 
+            min_value=1, 
+            max_value=6, 
+            value=4,
+            help="Maximum number of models to consult per round"
         )
         
         thinking_depth = st.select_slider(
             "Thinking Depth",
             options=["minimal", "low", "medium", "high", "max"],
-            value="medium",
-            help="How deeply Gemini 2.5 models should think (adaptive thinking)"
+            value="high",
+            help="How deeply models should think (applies to Gemini 2.5 models)"
         )
     
     with col2:
@@ -165,17 +165,17 @@ with st.expander("⚙️ Advanced Options"):
 # Execution
 if st.button("🚀 Execute", type="primary") and user_input:
     
-    # Initialize agents with correct Gemini 2.5 model
+    # Initialize agents with Claude Opus 4 as primary
     agents = {
         "openai": OpenAIAgent(openai_key),
-        "anthropic": AnthropicAgent(anthropic_key), 
-        "gemini": GeminiAgent(gemini_key, model_variant="2.5-flash")  # Use official 2.5 Flash
+        "anthropic": AnthropicAgent(anthropic_key, model_variant="opus-4"),  # Claude Opus 4
+        "gemini": GeminiAgent(gemini_key, model_variant="2.5-flash")
     }
     
     # Initialize memory manager
     memory = MemoryManager() if save_conversations else None
     
-    # Initialize orchestrator with new configuration
+    # Initialize orchestrator with Claude Opus 4 configuration
     orchestrator = Orchestrator(
         agents=agents,
         primary_model=primary_model,
@@ -230,9 +230,18 @@ if st.button("🚀 Execute", type="primary") and user_input:
                 st.markdown("### Primary Output")
                 st.write(result["primary_output"])
             
+            # Show collaboration rounds if available
+            if result.get("collaboration_rounds"):
+                with st.expander("🤝 Multi-Round Collaboration Details"):
+                    rounds = result["collaboration_rounds"]
+                    if isinstance(rounds, dict) and not rounds.get("simple_query"):
+                        st.write(f"**Round 1 - Independent Analysis:** {rounds.get('round_1_independent', 0)} consultations")
+                        st.write(f"**Round 2 - Cross Review:** {rounds.get('round_2_cross_review', 0)} consultations")
+                        st.write(f"**Round 3 - Consensus Building:** {rounds.get('round_3_consensus', 0)} consultations")
+            
             # Show consultation details if any occurred
             if result.get("consultations"):
-                with st.expander("🤝 Consultation Details"):
+                with st.expander("🤖 Individual Consultation Details"):
                     for i, consultation in enumerate(result["consultations"], 1):
                         st.markdown(f"**Consultation {i}: {consultation['model']} - {consultation['tool']}**")
                         st.write(consultation["purpose"])
@@ -249,9 +258,9 @@ if st.button("🚀 Execute", type="primary") and user_input:
                 with col2:
                     st.metric("Consultations Used", result['metrics']['consultations_count'])
                 with col3:
-                    st.metric("Primary Model Tokens", result['metrics']['primary_tokens'])
+                    st.metric("Primary Model Tokens", f"{result['metrics']['primary_tokens']:,}")
                 with col4:
-                    st.metric("Total Tokens", result['metrics']['total_tokens'])
+                    st.metric("Total Tokens", f"{result['metrics']['total_tokens']:,.0f}")
         
         # Update conversation history
         st.session_state.conversation_history.append({
@@ -276,7 +285,8 @@ if st.session_state.conversation_history:
             st.markdown(f"**Query {len(st.session_state.conversation_history) - i + 1}:**{files_badge} {item['user_input'][:100]}...")
             if item['result'].get('metrics'):
                 st.caption(f"Consultations: {item['result']['metrics']['consultations_count']} | "
-                          f"Time: {item['result']['metrics']['total_time']:.1f}s")
+                          f"Time: {item['result']['metrics']['total_time']:.1f}s | "
+                          f"Tokens: {item['result']['metrics']['total_tokens']:,.0f}")
             st.divider()
 
 # File Management
@@ -299,8 +309,8 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: #666; font-size: 0.9em;'>
-    Hydra v3 - Claude-Orchestrated Multi-Agent System with File Analysis<br>
-    🧠 Claude + Gemini 2.5 Pro + Gemini 2.5 Flash + GPT-4o 🚀
+    Hydra v3 - Claude Opus 4 Orchestrated Multi-Agent System<br>
+    🧠 Claude Opus 4 + Claude Sonnet 4 + Gemini 2.5 Pro + GPT-4o + Multi-Round Collaboration 🚀
     </div>
     """, 
     unsafe_allow_html=True
