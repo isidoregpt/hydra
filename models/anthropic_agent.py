@@ -2,10 +2,10 @@ import anthropic
 
 class AnthropicAgent:
     def __init__(self, api_key):
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.client = anthropic.AsyncAnthropic(api_key=api_key)
 
-    def chat(self, prompt):
-        response = self.client.messages.create(
+    async def chat(self, prompt):
+        response = await self.client.messages.create(
             model="claude-opus-4-20250514",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}]
