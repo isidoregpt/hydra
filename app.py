@@ -1,3 +1,4 @@
+
 import streamlit as st
 import uuid
 import asyncio
@@ -8,10 +9,11 @@ from planner_agent import PlannerAgent
 from reflection_agent import ReflectionAgent
 from debate_agent import DebateAgent
 from orchestrator import Orchestrator
+from operator_console import OperatorConsole
 from memory.memory_manager import MemoryManager
 
-st.set_page_config(page_title="Hydra Phase 4 - Cognitive AI", layout="wide")
-st.title("🧠 Hydra Phase 4 - Autonomous Cognitive Reflection")
+st.set_page_config(page_title="Hydra Phase 4.5 - Operator Console", layout="wide")
+st.title("🧠 Hydra Phase 4.5 - Cognitive AI Orchestration")
 
 with st.form("api_form"):
     openai_key = st.text_input("OpenAI API Key", type="password")
@@ -23,7 +25,10 @@ if not all([openai_key, anthropic_key, gemini_key]):
     st.warning("Please enter all API keys to continue.")
     st.stop()
 
-user_input = st.text_area("Enter your complex problem for Hydra:")
+st.sidebar.header("⚙️ Operator Controls")
+subtask_limit = st.sidebar.slider("Max Subtasks", min_value=1, max_value=100, value=15)
+
+user_input = st.text_area("Enter your complex task for Hydra:")
 memory = MemoryManager()
 
 if "session_id" not in st.session_state:
@@ -31,6 +36,8 @@ if "session_id" not in st.session_state:
 
 status_placeholder = st.empty()
 progress_bar = st.progress(0)
+log_placeholder = st.empty()
+usage_placeholder = st.empty()
 
 if st.button("Run Hydra") and user_input:
     async def run_async():
@@ -40,21 +47,20 @@ if st.button("Run Hydra") and user_input:
         planner_agent = PlannerAgent(gemini_agent)
         reflection_agent = ReflectionAgent(anthropic_agent)
         debate_agent = DebateAgent(gemini_agent, anthropic_agent)
-
-        # Progress feedback
-        step_counter = {"step": 0}
-        total_phases = 5
+        console = OperatorConsole()
 
         def progress_callback(msg):
-            step_counter["step"] += 1
-            pct = step_counter["step"] / (len(user_input.split()) + total_phases)
-            progress_bar.progress(min(pct, 1.0))
+            progress_bar.progress(min(1.0, (len(console.routing_log)+1)/(subtask_limit+2)))
             status_placeholder.info(msg)
+            log_placeholder.write("\n".join(console.get_logs()))
+            usage_placeholder.write(console.get_usage())
 
         orchestrator = Orchestrator(
             openai_agent, anthropic_agent, gemini_agent,
-            planner_agent, reflection_agent, debate_agent, progress_callback
+            planner_agent, reflection_agent, debate_agent,
+            console, subtask_limit, progress_callback
         )
+
         result = await orchestrator.run(user_input)
         memory.save_session(st.session_state.session_id, result)
 
