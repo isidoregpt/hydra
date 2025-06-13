@@ -4,6 +4,7 @@ import re
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from enum import Enum
+from web_search_tool import WebSearchTool
 
 
 class TaskComplexity(Enum):
@@ -82,6 +83,31 @@ class Orchestrator:
         if progress_callback:
             progress_callback("Analyzing task complexity...", 0.1)
         
+        # Check if this is a request for current information
+        if self._needs_current_info(user_input):
+            if progress_callback:
+                progress_callback("Searching for current information...", 0.3)
+            
+            web_result = await self._handle_web_search(user_input)
+            if web_result:
+                if progress_callback:
+                    progress_callback("Complete!", 1.0)
+                
+                return {
+                    "primary_output": web_result,
+                    "consultations": [],
+                    "metrics": {
+                        "total_time": time.time() - self.start_time,
+                        "consultations_count": 0,
+                        "primary_tokens": 0,
+                        "total_tokens": 0,
+                        "task_complexity": "simple_web_search"
+                    },
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "session_id": session_id
+                }
+        
+        # Continue with normal task processing
         # Step 1: Classify the task complexity
         task_complexity = await self._classify_task(user_input)
         
@@ -443,3 +469,32 @@ Final Response:
     def _estimate_tokens(self, text: str) -> int:
         """Rough token estimation"""
         return len(text.split()) * 1.3  # Approximate tokens
+
+    def _needs_current_info(self, user_input: str) -> bool:
+        """Check if the request needs current/real-time information."""
+        current_info_indicators = [
+            'today', 'current', 'now', 'latest', 'recent', 'what time',
+            'today\'s date', 'current date', 'what day', 'weather',
+            'news', 'stock price', 'exchange rate', 'current status'
+        ]
+        
+        user_lower = user_input.lower()
+        return any(indicator in user_lower for indicator in current_info_indicators)
+
+    async def _handle_web_search(self, user_input: str) -> str:
+        """Handle web search for current information."""
+        try:
+            async with WebSearchTool() as search_tool:
+                result = await search_tool.search(user_input)
+                
+                if result["type"] == "instant_answer":
+                    return result["answer"]
+                elif result["type"] == "current_info":
+                    return result["answer"]
+                elif result["type"] == "search_needed":
+                    return f"I don't have access to real-time information. {result['suggestion']}\n\nYou can search here:\n{result['search_engines'][0]}"
+                else:
+                    return result.get("fallback", "I'm unable to access current information. Please search manually.")
+                    
+        except Exception as e:
+            return f"I'm unable to access real-time information at the moment. Please check your device's clock or search for '{user_input}' online."
