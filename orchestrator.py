@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from enum import Enum
 from tools_system_complete import WebSearchTool, ConsultationEngine, ConsultationRequest, ToolRegistry
+from model_selector import ModelSelector
 
 
 class TaskComplexity(Enum):
@@ -63,6 +64,7 @@ class Orchestrator:
         # Initialize consultation system
         self.consultation_engine = ConsultationEngine(agents)
         self.tool_registry = ToolRegistry()
+        self.model_selector = ModelSelector()
         
         # Execution state
         self.consultation_count = 0
@@ -293,9 +295,62 @@ Then begin executing your approach.
         
         # If auto consultation is enabled and no explicit requests, suggest based on task type
         if not consultation_requests and self.auto_consultation:
-            consultation_requests.extend(self._suggest_auto_consultations(user_input, approach_response))
+            consultation_requests.extend(self._suggest_smart_consultations(user_input, approach_response))
         
         return consultation_requests
+
+    def _suggest_smart_consultations(self, user_input: str, approach: str) -> List[ConsultationRequest]:
+        """Use ModelSelector for intelligent consultation suggestions"""
+        suggestions = []
+        user_lower = user_input.lower()
+        context_keywords = user_input.split()
+        
+        # Determine task complexity
+        complexity = "moderate"  # default
+        if any(word in user_lower for word in ['complex', 'comprehensive', 'enterprise', 'scalable']):
+            complexity = "complex"
+        elif any(word in user_lower for word in ['security', 'cryptography', 'machine learning', 'architecture']):
+            complexity = "specialized"
+        elif any(word in user_lower for word in ['simple', 'basic', 'quick']):
+            complexity = "simple"
+        
+        # Get model recommendations for this task
+        recommendations = self.model_selector.get_model_recommendations(user_input)
+        
+        # Convert recommendations to consultation requests
+        for aspect, recommended_model in recommendations.items():
+            # Map aspects to tools
+            aspect_tool_map = {
+                'security': 'codereview',
+                'debugging': 'debug', 
+                'architecture': 'thinkdeep',
+                'performance': 'analyze',
+                'general': 'analyze'
+            }
+            
+            tool = aspect_tool_map.get(aspect, 'analyze')
+            
+            # Only add if model is available
+            if recommended_model in self.available_consultants:
+                # Select appropriate thinking mode
+                thinking_mode = self.model_selector.select_thinking_mode(
+                    recommended_model, tool, complexity
+                )
+                
+                suggestions.append(ConsultationRequest(
+                    purpose=f"{aspect} analysis using {recommended_model}",
+                    model=recommended_model,
+                    tool=tool,
+                    context={
+                        "user_input": user_input, 
+                        "approach": approach,
+                        "thinking_mode": thinking_mode,
+                        "complexity": complexity,
+                        "keywords": context_keywords
+                    }
+                ))
+        
+        return suggestions[:self.max_consultations]  # Limit to max consultations
 
     def _extract_purpose_from_line(self, line: str) -> str:
         """Extract consultation purpose from a line of text"""
