@@ -1,6 +1,7 @@
 class ReflectionAgent:
-    def __init__(self, anthropic_agent):
+    def __init__(self, anthropic_agent, semaphore):
         self.anthropic_agent = anthropic_agent
+        self.semaphore = semaphore
 
     async def critique(self, task, result):
         critique_prompt = f"""
@@ -9,5 +10,6 @@ You are an expert reviewer. Analyze the following task result for completeness, 
 Task: {task}
 Result: {result}
 """
-        critique = await self.anthropic_agent.chat(critique_prompt)
-        return critique.strip()
+        async with self.semaphore:
+            critique = await self.anthropic_agent.chat(critique_prompt)
+            return critique.strip()
