@@ -5,6 +5,6 @@ class GeminiAgent:
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.5-pro-preview-06-05')
 
-    def chat(self, prompt):
-        response = self.model.generate_content(prompt)
+    async def chat(self, prompt):
+        response = await self.model.generate_content_async(prompt)
         return response.text
