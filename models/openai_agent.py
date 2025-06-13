@@ -5,7 +5,7 @@ class OpenAIAgent:
         self.client = openai.OpenAI(api_key=api_key)
 
     async def chat(self, prompt):
-        response = await self.client.chat.completions.acreate(
+        response = await self.client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}]
         )
