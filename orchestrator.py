@@ -20,7 +20,7 @@ class Orchestrator:
             elif "analyze" in step.lower() or "research" in step.lower():
                 response = await self.gemini_agent.chat(f"Analyze this step:\n{step}")
             else:
-                response = await self.anthropic_agent.chat(f"Handle this task step:\n{step}")
+                response = await self.anthropic_agent.chat(f"Handle this task step:\n{step}", max_tokens=512)
 
             critique = await self.reflection_agent.critique(step, response)
             return idx, step, response, critique
