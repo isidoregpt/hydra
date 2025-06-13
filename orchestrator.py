@@ -54,7 +54,8 @@ class Orchestrator:
     ):
         self.agents = agents
         self.primary_model = primary_model
-        self.available_consultants = available_consultants or ["gpt-4o", "gemini-2.0-pro"]
+        # Updated default consultants to use official Gemini 2.5 models
+        self.available_consultants = available_consultants or ["gpt-4o", "gemini-2.5-pro"]
         self.auto_consultation = auto_consultation
         self.max_consultations = max_consultations
         self.thinking_depth = thinking_depth
@@ -233,7 +234,7 @@ Available Consultation Tools:
 - analyze: Deep analysis of code, architecture, or documents
 - codereview: Professional code review with severity ratings  
 - debug: Root cause analysis for bugs and issues
-- thinkdeep: Extended reasoning for complex problems
+- thinkdeep: Extended reasoning for complex problems (best with Gemini 2.5 Pro)
 - validate: Check work against requirements
 - brainstorm: Collaborative ideation and problem-solving
 
@@ -245,7 +246,7 @@ Your approach should be:
 Guidelines:
 - For simple creative tasks (stories, poems): Handle directly
 - For technical tasks: Consider consultation for expertise
-- For complex/specialized tasks: Consultation highly recommended
+- For complex/specialized tasks: Consultation highly recommended with Gemini 2.5 Pro
 - Always do the primary work yourself - consultants provide input only
 
 Analyze the request and respond with:
@@ -263,8 +264,8 @@ Then begin executing your approach.
         """Format available consultant models for the prompt"""
         descriptions = {
             "gpt-4o": "Strong reasoning, general intelligence, coding",
-            "gemini-2.0-pro": "Deep analysis, architecture review, extended thinking", 
-            "gemini-2.0-flash": "Fast analysis, quick validation, formatting"
+            "gemini-2.5-pro": "Most powerful thinking model, maximum accuracy, multimodal",
+            "gemini-2.5-flash": "Best price-performance, adaptive thinking, fast processing"
         }
         
         formatted = []
@@ -328,6 +329,7 @@ Then begin executing your approach.
                 'debugging': 'debug', 
                 'architecture': 'thinkdeep',
                 'performance': 'analyze',
+                'thinking': 'thinkdeep',
                 'general': 'analyze'
             }
             
@@ -335,7 +337,7 @@ Then begin executing your approach.
             
             # Only add if model is available
             if recommended_model in self.available_consultants:
-                # Select appropriate thinking mode
+                # Select appropriate thinking mode for Gemini 2.5 models
                 thinking_mode = self.model_selector.select_thinking_mode(
                     recommended_model, tool, complexity
                 )
@@ -368,6 +370,8 @@ Then begin executing your approach.
             return "security analysis"
         elif 'performance' in line:
             return "performance optimization"
+        elif 'think' in line:
+            return "deep thinking analysis"
         else:
             return "general consultation"
 
@@ -378,106 +382,6 @@ Then begin executing your approach.
             if tool in line:
                 return tool
         return 'analyze'  # default
-
-    def _suggest_auto_consultations(self, user_input: str, approach: str) -> List[ConsultationRequest]:
-        """Auto-suggest consultations based on task characteristics"""
-        suggestions = []
-        user_lower = user_input.lower()
-        
-        # Code-related tasks
-        if any(word in user_lower for word in ['code', 'bug', 'debug', 'error', 'function']):
-            suggestions.append(ConsultationRequest(
-                purpose="code analysis and debugging",
-                model="gpt-4o",
-                tool="debug",
-                context={"user_input": user_input, "approach": approach}
-            ))
-        
-        # Architecture/design tasks  
-        if any(word in user_lower for word in ['architecture', 'design', 'system', 'scalability']):
-            suggestions.append(ConsultationRequest(
-                purpose="architectural analysis",
-                model="gemini-2.0-pro", 
-                tool="analyze",
-                context={"user_input": user_input, "approach": approach}
-            ))
-        
-        # Security-related
-        if any(word in user_lower for word in ['security', 'vulnerability', 'auth', 'permissions']):
-            suggestions.append(ConsultationRequest(
-                purpose="security review",
-                model="gemini-2.0-pro",
-                tool="codereview", 
-                context={"user_input": user_input, "approach": approach}
-            ))
-        
-        return suggestions[:2]  # Limit auto-suggestions
-
-    async def _execute_consultation(self, request: ConsultationRequest) -> ConsultationResult:
-        """Execute a single consultation with a specialist model"""
-        start_time = time.time()
-        
-        consultant_agent = self._get_agent(request.model)
-        
-        # Build consultation prompt
-        consultation_prompt = self._build_consultation_prompt(request)
-        
-        # Execute consultation
-        consultation_output = await consultant_agent.chat(consultation_prompt)
-        
-        # Extract key insights
-        key_insights = self._extract_key_insights(consultation_output)
-        
-        execution_time = time.time() - start_time
-        tokens_used = self._estimate_tokens(consultation_prompt + consultation_output)
-        self.total_tokens += tokens_used
-        
-        return ConsultationResult(
-            model=request.model,
-            tool=request.tool,
-            purpose=request.purpose,
-            output=consultation_output,
-            key_insights=key_insights,
-            execution_time=execution_time,
-            tokens_used=tokens_used
-        )
-
-    def _build_consultation_prompt(self, request: ConsultationRequest) -> str:
-        """Build the consultation prompt for specialist models"""
-        
-        base_prompt = f"""
-You are a specialist consultant in a multi-agent system. Your role is to provide expert analysis in your domain.
-
-Consultation Purpose: {request.purpose}
-Tool: {request.tool}
-Thinking Depth: {self.thinking_depth}
-
-Original User Request: {request.context['user_input']}
-
-Primary Agent's Approach: {request.context['approach']}
-
-Provide focused, actionable insights for your specialization. Be:
-- Specific and concrete
-- Focused on your area of expertise  
-- Actionable in your recommendations
-- Aware this is consultation, not final output
-
-Your analysis:
-"""
-        
-        return base_prompt
-
-    def _extract_key_insights(self, consultation_output: str) -> str:
-        """Extract key insights from consultation output"""
-        lines = consultation_output.split('\n')
-        insights = []
-        
-        for line in lines:
-            line = line.strip()
-            if any(keyword in line.lower() for keyword in ['key', 'important', 'critical', 'recommend', 'suggest']):
-                insights.append(line)
-        
-        return '\n'.join(insights[:3])  # Top 3 insights
 
     async def _synthesize_final_output(
         self, 
@@ -522,8 +426,8 @@ Final Response:
         model_map = {
             "claude-4": "anthropic",
             "gpt-4o": "openai", 
-            "gemini-2.0-pro": "gemini",
-            "gemini-2.0-flash": "gemini"
+            "gemini-2.5-pro": "gemini",
+            "gemini-2.5-flash": "gemini"
         }
         
         agent_type = model_map.get(model_name, "anthropic")
@@ -550,7 +454,7 @@ Final Response:
             # Create a web search consultation request
             search_request = ConsultationRequest(
                 purpose=f"Search for current information: {user_input}",
-                model="gemini-2.0-flash",  # Fast model for search
+                model="gemini-2.5-flash",  # Fast model for search
                 tool="websearch",
                 context={
                     "user_input": user_input,
