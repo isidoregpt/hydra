@@ -7,4 +7,4 @@ class GeminiAgent:
 
     async def chat(self, prompt):
         response = await self.model.generate_content_async(prompt)
-        return response.text
+        return response.text.strip()
