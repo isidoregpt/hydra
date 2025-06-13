@@ -8,8 +8,9 @@ from planner_agent import PlannerAgent
 from reflection_agent import ReflectionAgent
 from orchestrator import Orchestrator
 from memory.memory_manager import MemoryManager
+import asyncio
 
-st.title("🧠 Hydra Phase 3.5 - Async Multi-Agent AI")
+st.title("🧠 Hydra Phase 3.5.1 - Throttled Async Multi-Agent AI")
 
 with st.form("api_form"):
     openai_key = st.text_input("OpenAI API Key", type="password")
@@ -33,13 +34,16 @@ if st.button("Run Hydra") and user_input:
         anthropic_agent = AnthropicAgent(anthropic_key)
         gemini_agent = GeminiAgent(gemini_key)
         planner_agent = PlannerAgent(gemini_agent)
-        reflection_agent = ReflectionAgent(anthropic_agent)
-        orchestrator = Orchestrator(openai_agent, anthropic_agent, gemini_agent, planner_agent, reflection_agent)
 
+        # THROTTLE CONTROL: limit concurrent Claude reflections to 2 max
+        semaphore = asyncio.Semaphore(2)
+        reflection_agent = ReflectionAgent(anthropic_agent, semaphore)
+
+        orchestrator = Orchestrator(openai_agent, anthropic_agent, gemini_agent, planner_agent, reflection_agent)
         result = await orchestrator.run(user_input)
         memory.save_session(st.session_state.session_id, result)
 
-        st.header("🧠 Hydra Async Output")
+        st.header("🧠 Hydra Throttled Async Output")
         for section, content in result.items():
             st.subheader(section)
             st.write(content)
