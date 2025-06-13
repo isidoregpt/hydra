@@ -1,5 +1,5 @@
 """
-Smart model selection for Hydra v3 consultations
+Smart model selection for Hydra v3 consultations - Updated for official Gemini 2.5 models
 """
 from typing import Dict, List, Optional
 from enum import Enum
@@ -19,7 +19,7 @@ class ModelSelector:
     """
     
     def __init__(self):
-        # Model capabilities and preferences
+        # Updated model capabilities with official Gemini 2.5 models
         self.model_capabilities = {
             "gemini-2.5-flash": {
                 "strengths": [
@@ -28,10 +28,11 @@ class ModelSelector:
                     ModelCapability.DEBUGGING,
                     ModelCapability.WEB_SEARCH
                 ],
-                "thinking_modes": ["minimal", "low", "medium", "high"],
+                "thinking_modes": ["minimal", "low", "medium", "high", "max"],
                 "cost": "low",
                 "speed": "fast",
-                "context_window": 1000000
+                "context_window": 1000000,
+                "description": "Best price-performance, adaptive thinking"
             },
             
             "gemini-2.5-pro": {
@@ -44,7 +45,8 @@ class ModelSelector:
                 "thinking_modes": ["medium", "high", "max"],
                 "cost": "high", 
                 "speed": "slower",
-                "context_window": 2000000
+                "context_window": 2000000,
+                "description": "Most powerful thinking model, maximum accuracy"
             },
             
             "gpt-4o": {
@@ -53,10 +55,11 @@ class ModelSelector:
                     ModelCapability.CODE_REVIEW,
                     ModelCapability.FAST_ANALYSIS
                 ],
-                "thinking_modes": None,  # No thinking modes
+                "thinking_modes": None,  # No thinking modes for GPT
                 "cost": "medium",
                 "speed": "medium", 
-                "context_window": 128000
+                "context_window": 128000,
+                "description": "Strong reasoning and general intelligence"
             }
         }
         
@@ -69,7 +72,7 @@ class ModelSelector:
             "websearch": ModelCapability.WEB_SEARCH
         }
         
-        # Complexity-based model preferences
+        # Complexity-based model preferences (updated for 2.5 models)
         self.complexity_preferences = {
             "simple": ["gemini-2.5-flash", "gpt-4o"],
             "moderate": ["gemini-2.5-flash", "gemini-2.5-pro", "gpt-4o"],
@@ -226,7 +229,10 @@ class ModelSelector:
             "performance": {"gpt-4o": 2, "gemini-2.5-flash": 1},
             "architecture": {"gemini-2.5-pro": 2},
             "debugging": {"gpt-4o": 2, "gemini-2.5-flash": 1},
-            "analysis": {"gemini-2.5-pro": 1, "gemini-2.5-flash": 1}
+            "analysis": {"gemini-2.5-pro": 1, "gemini-2.5-flash": 1},
+            "thinking": {"gemini-2.5-pro": 3, "gemini-2.5-flash": 2},  # Gemini 2.5 has adaptive thinking
+            "complex": {"gemini-2.5-pro": 2},
+            "multimodal": {"gemini-2.5-pro": 2, "gemini-2.5-flash": 2}  # Gemini 2.5 supports audio/video
         }
         
         total_bonus = 0
@@ -241,11 +247,11 @@ class ModelSelector:
     def _get_tool_specific_bonus(self, tool: str, model: str) -> int:
         """Get tool-specific model bonuses"""
         tool_bonuses = {
-            "thinkdeep": {"gemini-2.5-pro": 3},
+            "thinkdeep": {"gemini-2.5-pro": 3},  # 2.5 Pro excels at thinking
             "debug": {"gpt-4o": 2, "gemini-2.5-flash": 1},
             "codereview": {"gemini-2.5-pro": 2, "gemini-2.5-flash": 1},
-            "analyze": {"gemini-2.5-flash": 2, "gemini-2.5-pro": 1},
-            "websearch": {"gemini-2.5-flash": 3}
+            "analyze": {"gemini-2.5-flash": 2, "gemini-2.5-pro": 1},  # Flash is optimized for this
+            "websearch": {"gemini-2.5-flash": 3}  # Fast and efficient
         }
         
         return tool_bonuses.get(tool, {}).get(model, 0)
@@ -277,8 +283,15 @@ class ModelSelector:
         if any(word in task_description.lower() for word in ['performance', 'optimize', 'speed']):
             recommendations['performance'] = self.select_model_for_consultation("analyze", "moderate", keywords)
         
+        if any(word in task_description.lower() for word in ['think', 'reason', 'complex', 'analysis']):
+            recommendations['thinking'] = self.select_model_for_consultation("thinkdeep", "specialized", keywords)
+        
         # Default analysis recommendation
         if not recommendations:
             recommendations['general'] = self.select_model_for_consultation("analyze", "moderate", keywords)
         
         return recommendations
+
+    def get_model_info(self, model: str) -> Dict[str, Any]:
+        """Get detailed information about a model"""
+        return
