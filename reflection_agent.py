@@ -1,13 +1,13 @@
 class ReflectionAgent:
-    def __init__(self, anthropic_agent):
-        self.anthropic_agent = anthropic_agent
+    def __init__(self, agent):
+        self.agent = agent
 
-    async def critique(self, task, result):
+    async def critique(self, task, peer_response):
         critique_prompt = f"""
-You are an expert cognitive agent. Review the following output for completeness, correctness, logic gaps, or any flaws.
+You are acting as a peer-review AI. Evaluate this response for logic, accuracy, and completeness.
 
 Task: {task}
-Result: {result}
+Response: {peer_response}
 """
-        critique = await self.anthropic_agent.chat(critique_prompt, max_tokens=512)
+        critique = await self.agent.chat(critique_prompt)
         return critique.strip()
