@@ -1,26 +1,35 @@
 class Orchestrator:
-    def __init__(self, openai_agent, anthropic_agent, gemini_agent, task_manager):
+    def __init__(self, openai_agent, anthropic_agent, gemini_agent, planner_agent, reflection_agent):
         self.openai_agent = openai_agent
         self.anthropic_agent = anthropic_agent
         self.gemini_agent = gemini_agent
-        self.task_manager = task_manager
+        self.planner_agent = planner_agent
+        self.reflection_agent = reflection_agent
 
     def run(self, user_input):
-        classification = self.task_manager.classify_task(user_input)
+        plan = self.planner_agent.generate_plan(user_input)
+        plan_steps = plan.split('\n')
+        full_results = {}
+        full_results['Planning Breakdown'] = plan
 
-        # Dynamic orchestration based on classification
-        if "Code" in classification:
-            g_analysis = self.gemini_agent.chat(f"Analyze the following code task:\n{user_input}")
-            o_thoughts = self.openai_agent.chat(f"Gemini says:\n{g_analysis}\nSuggest improvements or solutions.")
-            a_summary = self.anthropic_agent.chat(f"Gemini says:\n{g_analysis}\nOpenAI says:\n{o_thoughts}\nSynthesize and finalize the best code plan.")
-        else:
-            g_analysis = self.gemini_agent.chat(f"Break down and analyze:\n{user_input}")
-            o_thoughts = self.openai_agent.chat(f"Gemini says:\n{g_analysis}\nExpand, evaluate or critique as needed.")
-            a_summary = self.anthropic_agent.chat(f"Gemini says:\n{g_analysis}\nOpenAI says:\n{o_thoughts}\nProvide the final expert answer.")
+        for idx, step in enumerate(plan_steps, start=1):
+            step = step.strip()
+            if not step:
+                continue
 
-        return {
-            "Task Type": classification,
-            "Gemini Analysis": g_analysis,
-            "OpenAI Thoughts": o_thoughts,
-            "Claude Final Plan": a_summary
-        }
+            # Assign agents based on simple rule (this is your first router logic)
+            if "code" in step.lower():
+                response = self.openai_agent.chat(f"Solve this code task step:\n{step}")
+            elif "analyze" in step.lower() or "research" in step.lower():
+                response = self.gemini_agent.chat(f"Analyze this step:\n{step}")
+            else:
+                response = self.anthropic_agent.chat(f"Handle this task step:\n{step}")
+
+            critique = self.reflection_agent.critique(step, response)
+
+            full_results[f"Step {idx}: {step}"] = {
+                "Agent Response": response,
+                "Critique": critique
+            }
+
+        return full_results
