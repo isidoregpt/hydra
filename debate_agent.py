@@ -14,4 +14,3 @@ Critique 2 (Gemini): {critique_b}
 """
         merged = await self.anthropic_agent.chat(debate_prompt, max_tokens=512)
         return merged.strip()
-
