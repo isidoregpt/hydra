@@ -1,7 +1,7 @@
 """
 Smart model selection for Hydra v3 consultations - Updated for official Gemini 2.5 models
 """
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from enum import Enum
 
 class ModelCapability(Enum):
