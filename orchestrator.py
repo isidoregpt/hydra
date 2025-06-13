@@ -37,8 +37,7 @@ class ConsultationResult:
 
 class Orchestrator:
     """
-    Claude-centric orchestrator that decides when and how to use other models
-    as specialized consultants rather than equals in a democracy.
+    Claude-centric orchestrator - ENHANCED to force multi-model consultation
     """
     
     def __init__(
@@ -54,7 +53,6 @@ class Orchestrator:
     ):
         self.agents = agents
         self.primary_model = primary_model
-        # Updated default consultants to use official Gemini 2.5 models
         self.available_consultants = available_consultants or ["gpt-4o", "gemini-2.5-pro"]
         self.auto_consultation = auto_consultation
         self.max_consultations = max_consultations
@@ -83,7 +81,7 @@ class Orchestrator:
         progress_callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
         """
-        Main execution method - Claude analyzes the task and decides how to approach it
+        Main execution method - ALWAYS uses consultations for non-trivial tasks
         """
         self.start_time = time.time()
         self.consultation_count = 0
@@ -93,10 +91,10 @@ class Orchestrator:
         if progress_callback:
             progress_callback("Analyzing task complexity...", 0.1)
         
-        # Check if this is a request for current information
-        if self._needs_current_info(user_input):
+        # Check if this is a request for current information (time/date only)
+        if self._is_simple_time_query(user_input):
             if progress_callback:
-                progress_callback("Searching for current information...", 0.3)
+                progress_callback("Handling simple time query...", 0.3)
             
             web_result = await self._handle_web_search(user_input)
             if web_result:
@@ -111,51 +109,31 @@ class Orchestrator:
                         "consultations_count": 0,
                         "primary_tokens": 0,
                         "total_tokens": 0,
-                        "task_complexity": "simple_web_search"
+                        "task_complexity": "simple_time_query"
                     },
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "session_id": session_id
                 }
         
-        # Continue with normal task processing
-        # Step 1: Classify the task complexity
-        task_complexity = await self._classify_task(user_input)
+        # For ALL other tasks, use multi-model consultation
+        if progress_callback:
+            progress_callback("Generating consultations for multi-perspective analysis...", 0.2)
         
-        # Step 2: Enhanced consultation strategy - be more aggressive about consulting
-        consultations = []
+        # Force consultations for almost everything
+        consultations = await self._force_consultations(user_input, progress_callback)
         
-        # Always get consultations for moderate+ complexity tasks when auto_consultation is enabled
-        if self.auto_consultation and task_complexity != TaskComplexity.SIMPLE:
-            if progress_callback:
-                progress_callback("Identifying consultation opportunities...", 0.2)
-            
-            consultation_requests = self._generate_strategic_consultations(user_input, task_complexity)
-            
-            # Execute consultations BEFORE primary analysis for better input
-            for req in consultation_requests[:self.max_consultations]:
-                if progress_callback:
-                    progress_percent = 0.2 + (0.4 * (len(consultations) / max(1, len(consultation_requests))))
-                    progress_callback(f"Consulting {req.model} for {req.purpose}...", progress_percent)
-                
-                consultation_result = await self.consultation_engine.execute_consultation(req)
-                consultations.append(consultation_result)
-                self.consultation_count += 1
+        if progress_callback:
+            progress_callback("Primary model synthesizing insights...", 0.7)
         
-        # Step 3: Primary model analyzes with consultation input
+        # Primary model synthesizes with consultation input
         primary_agent = self._get_agent(self.primary_model)
-        
-        if progress_callback:
-            progress_callback("Primary model analyzing with consultation input...", 0.6)
-        
-        primary_prompt = self._build_enhanced_primary_prompt(user_input, task_complexity, consultations)
+        primary_prompt = self._build_synthesis_prompt(user_input, consultations)
         primary_response = await primary_agent.chat(primary_prompt)
-        self.primary_tokens += self._estimate_tokens(primary_prompt + primary_response)
-        self.total_tokens += self.primary_tokens
         
-        if progress_callback:
-            progress_callback("Synthesizing final response...", 0.8)
+        # Calculate tokens
+        self.primary_tokens = self._estimate_tokens(primary_prompt + primary_response)
+        self.total_tokens = self.primary_tokens
         
-        # Step 4: Add consultation token counts
         for consultation in consultations:
             self.total_tokens += consultation.tokens_used
         
@@ -181,7 +159,7 @@ class Orchestrator:
                 "consultations_count": self.consultation_count,
                 "primary_tokens": self.primary_tokens,
                 "total_tokens": self.total_tokens,
-                "task_complexity": task_complexity.value
+                "task_complexity": "multi_model_consultation"
             },
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "session_id": session_id
@@ -193,189 +171,159 @@ class Orchestrator:
         
         return result
 
-    async def _classify_task(self, user_input: str) -> TaskComplexity:
-        """Enhanced task complexity classification"""
-        user_lower = user_input.lower()
-        
-        # Simple creative tasks (only very basic ones)
-        if any(phrase in user_lower for phrase in ['write a', 'create a', 'generate a']) and \
-           any(phrase in user_lower for phrase in ['short story', 'quick poem', 'simple intro']) and \
-           len(user_input) < 80:
-            return TaskComplexity.SIMPLE
-        
-        # Specialized domains - always complex
-        if any(phrase in user_lower for phrase in ['security', 'cryptography', 'machine learning', 'architecture', 'editorial', 'manuscript', 'book', 'novel']):
-            return TaskComplexity.SPECIALIZED
-        
-        # Complex indicators
-        if any(phrase in user_lower for phrase in ['complex', 'comprehensive', 'enterprise', 'scalable', 'review', 'analyze', 'feedback', 'edit']):
-            return TaskComplexity.COMPLEX
-        
-        # Technical tasks - moderate to complex
-        if any(phrase in user_lower for phrase in ['debug', 'optimize', 'code', 'technical']):
-            return TaskComplexity.MODERATE
-        
-        # Content analysis/creation tasks
-        if any(phrase in user_lower for phrase in ['chapter', 'story', 'writing', 'prose', 'narrative', 'character']):
-            return TaskComplexity.COMPLEX
-        
-        # Default to moderate to encourage more consultation
-        return TaskComplexity.MODERATE
-
-    def _generate_strategic_consultations(self, user_input: str, complexity: TaskComplexity) -> List[ConsultationRequest]:
-        """Generate strategic consultations based on task analysis"""
+    async def _force_consultations(self, user_input: str, progress_callback: Optional[Callable] = None) -> List[ConsultationResult]:
+        """Force consultations for better multi-perspective analysis"""
         consultations = []
         user_lower = user_input.lower()
-        context_keywords = user_input.split()
         
-        # Editorial/Writing tasks - always get multiple perspectives
-        if any(word in user_lower for word in ['edit', 'manuscript', 'chapter', 'story', 'writing', 'prose', 'narrative']):
-            consultations.extend([
+        # Always get at least 2 consultations for any substantial task
+        consultation_requests = []
+        
+        # Editorial/Writing tasks - specialized consultations
+        if any(word in user_lower for word in ['edit', 'manuscript', 'chapter', 'story', 'writing', 'prose', 'narrative', 'book', 'novel', 'feedback']):
+            consultation_requests = [
                 ConsultationRequest(
-                    purpose="Editorial analysis and writing quality assessment",
+                    purpose="Deep literary and editorial analysis",
                     model="gemini-2.5-pro",
-                    tool="analyze",
+                    tool="thinkdeep",
                     context={
                         "user_input": user_input,
                         "thinking_mode": "high",
-                        "complexity": complexity.value,
-                        "keywords": context_keywords,
-                        "specialty": "literary_analysis"
+                        "specialty": "editorial_analysis"
                     }
                 ),
                 ConsultationRequest(
-                    purpose="Alternative perspective on writing style and structure",
+                    purpose="Alternative writing perspective and craft analysis",
                     model="gpt-4o",
                     tool="analyze",
                     context={
                         "user_input": user_input,
-                        "complexity": complexity.value,
-                        "keywords": context_keywords,
                         "specialty": "writing_craft"
                     }
                 )
-            ])
+            ]
         
-        # Code/Technical tasks
-        elif any(word in user_lower for word in ['code', 'debug', 'review', 'programming', 'technical']):
-            consultations.extend([
+        # Technical tasks
+        elif any(word in user_lower for word in ['code', 'debug', 'technical', 'programming', 'software']):
+            consultation_requests = [
                 ConsultationRequest(
                     purpose="Technical analysis and code review",
                     model="gpt-4o",
                     tool="codereview",
-                    context={
-                        "user_input": user_input,
-                        "complexity": complexity.value,
-                        "keywords": context_keywords
-                    }
+                    context={"user_input": user_input}
                 ),
                 ConsultationRequest(
-                    purpose="Deep architectural analysis",
+                    purpose="Deep technical thinking and architecture",
                     model="gemini-2.5-pro",
                     tool="thinkdeep",
                     context={
                         "user_input": user_input,
-                        "thinking_mode": "max",
-                        "complexity": complexity.value,
-                        "keywords": context_keywords
+                        "thinking_mode": "max"
                     }
                 )
-            ])
+            ]
         
         # Analysis tasks
-        elif any(word in user_lower for word in ['analyze', 'review', 'assess', 'evaluate']):
-            consultations.extend([
+        elif any(word in user_lower for word in ['analyze', 'review', 'assess', 'evaluate', 'explain']):
+            consultation_requests = [
                 ConsultationRequest(
-                    purpose="Comprehensive analysis from multiple angles",
+                    purpose="Comprehensive analytical thinking",
                     model="gemini-2.5-pro",
                     tool="thinkdeep",
                     context={
                         "user_input": user_input,
-                        "thinking_mode": "high",
-                        "complexity": complexity.value,
-                        "keywords": context_keywords
+                        "thinking_mode": "high"
                     }
                 ),
                 ConsultationRequest(
-                    purpose="Quick analytical insights and validation",
+                    purpose="Quick analytical insights",
                     model="gemini-2.5-flash",
                     tool="analyze",
                     context={
                         "user_input": user_input,
-                        "thinking_mode": "medium",
-                        "complexity": complexity.value,
-                        "keywords": context_keywords
+                        "thinking_mode": "medium"
                     }
                 )
-            ])
+            ]
         
-        # Creative/Complex tasks - get diverse perspectives
+        # General tasks - still get multiple perspectives
         else:
-            # Use model selector for intelligent recommendations
-            recommendations = self.model_selector.get_model_recommendations(user_input)
-            
-            for aspect, recommended_model in recommendations.items():
-                if recommended_model in self.available_consultants:
-                    aspect_tool_map = {
-                        'security': 'codereview',
-                        'debugging': 'debug', 
-                        'architecture': 'thinkdeep',
-                        'performance': 'analyze',
-                        'thinking': 'thinkdeep',
-                        'general': 'analyze'
+            consultation_requests = [
+                ConsultationRequest(
+                    purpose="Primary analytical perspective",
+                    model="gemini-2.5-pro",
+                    tool="analyze",
+                    context={
+                        "user_input": user_input,
+                        "thinking_mode": "medium"
                     }
-                    
-                    tool = aspect_tool_map.get(aspect, 'analyze')
-                    thinking_mode = self.model_selector.select_thinking_mode(
-                        recommended_model, tool, complexity.value
-                    )
-                    
-                    consultations.append(ConsultationRequest(
-                        purpose=f"{aspect} consultation using {recommended_model}",
-                        model=recommended_model,
-                        tool=tool,
-                        context={
-                            "user_input": user_input,
-                            "thinking_mode": thinking_mode,
-                            "complexity": complexity.value,
-                            "keywords": context_keywords,
-                            "file_paths": getattr(self, 'uploaded_file_paths', [])
-                        }
-                    ))
+                ),
+                ConsultationRequest(
+                    purpose="Alternative analytical perspective",
+                    model="gpt-4o",
+                    tool="analyze",
+                    context={"user_input": user_input}
+                )
+            ]
+        
+        # Execute consultations
+        for i, req in enumerate(consultation_requests[:self.max_consultations]):
+            if progress_callback:
+                progress_percent = 0.2 + (0.5 * (i / len(consultation_requests)))
+                progress_callback(f"Consulting {req.model} for {req.purpose}...", progress_percent)
+            
+            consultation_result = await self.consultation_engine.execute_consultation(req)
+            consultations.append(consultation_result)
+            self.consultation_count += 1
         
         return consultations
 
-    def _build_enhanced_primary_prompt(self, user_input: str, complexity: TaskComplexity, consultations: List[ConsultationResult]) -> str:
-        """Build enhanced prompt that incorporates consultation results"""
+    def _build_synthesis_prompt(self, user_input: str, consultations: List[ConsultationResult]) -> str:
+        """Build prompt for primary model to synthesize consultation results"""
         
-        consultation_summary = ""
+        consultation_insights = ""
         if consultations:
-            consultation_summary = "\n\nCONSULTATION INSIGHTS:\n"
+            consultation_insights = "\n\n=== SPECIALIST CONSULTATIONS ===\n"
             for i, consultation in enumerate(consultations, 1):
-                consultation_summary += f"\n{i}. {consultation.model} ({consultation.tool}) - {consultation.purpose}:\n"
-                consultation_summary += f"   Key Insights: {consultation.key_insights}\n"
-                consultation_summary += f"   Full Analysis: {consultation.output[:500]}{'...' if len(consultation.output) > 500 else ''}\n"
+                consultation_insights += f"\n**Consultation {i}: {consultation.model} ({consultation.tool})**\n"
+                consultation_insights += f"Purpose: {consultation.purpose}\n"
+                consultation_insights += f"Analysis: {consultation.output}\n"
+                consultation_insights += f"Key Insights: {consultation.key_insights}\n"
+                consultation_insights += "---\n"
         
-        enhanced_prompt = f"""
-You are the primary orchestrator in a multi-agent AI system. You have received specialist consultations from other AI models and should now provide the final, comprehensive response.
+        synthesis_prompt = f"""
+You are the primary orchestrator synthesizing insights from multiple AI specialist consultations.
 
 USER REQUEST: {user_input}
 
-TASK COMPLEXITY: {complexity.value}
+{consultation_insights}
 
-{consultation_summary}
+TASK: Provide a comprehensive response that:
+1. Synthesizes the specialist insights
+2. Adds your own expertise and perspective
+3. Directly addresses the user's request
+4. Acknowledges different viewpoints when valuable
+5. Delivers actionable, practical guidance
 
-INSTRUCTIONS:
-- Synthesize the consultation insights with your own analysis
-- Provide a comprehensive, well-structured response
-- Acknowledge different perspectives when relevant
-- Ensure the final output directly addresses the user's request
-- Build upon the specialist insights while maintaining your own voice and expertise
-
-Your comprehensive response:
+Your synthesized response:
 """
         
-        return enhanced_prompt
+        return synthesis_prompt
+
+    def _is_simple_time_query(self, user_input: str) -> bool:
+        """Check if this is ONLY asking for current time/date (not other current info)"""
+        user_lower = user_input.lower().strip()
+        
+        # Only very simple time/date queries
+        simple_time_queries = [
+            'what time is it',
+            'current time',
+            'what day is it',
+            'today\'s date',
+            'what date is it'
+        ]
+        
+        return any(query in user_lower for query in simple_time_queries) and len(user_input) < 50
 
     def _get_agent(self, model_name: str):
         """Get the appropriate agent for a model"""
@@ -391,39 +339,24 @@ Your comprehensive response:
 
     def _estimate_tokens(self, text: str) -> int:
         """Rough token estimation"""
-        return int(len(text.split()) * 1.3)  # Approximate tokens
-
-    def _needs_current_info(self, user_input: str) -> bool:
-        """Check if the request needs current/real-time information."""
-        current_info_indicators = [
-            'today', 'current', 'now', 'latest', 'recent', 'what time',
-            'today\'s date', 'current date', 'what day', 'weather',
-            'news', 'stock price', 'exchange rate', 'current status'
-        ]
-        
-        user_lower = user_input.lower()
-        return any(indicator in user_lower for indicator in current_info_indicators)
+        return int(len(text.split()) * 1.3)
 
     async def _handle_web_search(self, user_input: str) -> str:
-        """Handle web search for current information using the consultation engine"""
+        """Handle simple time queries"""
         try:
-            # Create a web search consultation request
             search_request = ConsultationRequest(
-                purpose=f"Search for current information: {user_input}",
-                model="gemini-2.5-flash",  # Fast model for search
+                purpose=f"Get current time/date: {user_input}",
+                model="gemini-2.5-flash",
                 tool="websearch",
                 context={
                     "user_input": user_input,
                     "search_query": user_input,
-                    "approach": "Direct web search consultation"
+                    "approach": "Direct time query"
                 }
             )
             
-            # Execute the web search consultation
             result = await self.consultation_engine.execute_consultation(search_request)
-            
-            # Return the search result
             return result.output
                     
         except Exception as e:
-            return f"I'm unable to access real-time information at the moment. Error: {str(e)}\n\nPlease search for '{user_input}' manually using your preferred search engine."
+            return f"I'm unable to access real-time information at the moment. Error: {str(e)}"
