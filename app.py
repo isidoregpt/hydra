@@ -169,7 +169,7 @@ if st.button("🚀 Execute", type="primary") and user_input:
     agents = {
         "openai": OpenAIAgent(openai_key),
         "anthropic": AnthropicAgent(anthropic_key), 
-        "gemini": GeminiAgent(gemini_key, model_variant="2.5-flash")  # Default to 2.5 Flash
+        "gemini": GeminiAgent(gemini_key, model_variant="2.5-flash")
     }
     
     # Initialize memory manager
@@ -189,7 +189,6 @@ if st.button("🚀 Execute", type="primary") and user_input:
     
     # Create containers for real-time updates
     status_container = st.container()
-    progress_container = st.container()
     results_container = st.container()
     
     async def run_task():
@@ -235,77 +234,6 @@ if st.button("🚀 Execute", type="primary") and user_input:
             if result.get("consultations"):
                 with st.expander("🤝 Consultation Details"):
                     for i, consultation in enumerate(result["consultations"], 1):
-                        st.markdown(f"**Consultation {i}: {consultation['model']} - {consultation['tool']}**")
-                        st.write(consultation["purpose"])
-                        if consultation.get("key_insights"):
-                            st.markdown("*Key Insights:*")
-                            st.write(consultation["key_insights"])
-                        st.divider()
-            
-            # Show execution metrics
-            if result.get("metrics"):
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Time", f"{result['metrics']['total_time']:.1f}s")
-                with col2:
-                    st.metric("Consultations Used", result['metrics']['consultations_count'])
-                with col3:
-                    st.metric("Primary Model Tokens", result['metrics']['primary_tokens'])
-                with col4:
-                    st.metric("Total Tokens", result['metrics']['total_tokens'])
-        
-        # Update conversation history
-        st.session_state.conversation_history.append({
-            "user_input": user_input,
-            "result": result,
-            "timestamp": result.get("timestamp"),
-            "files_included": len(st.session_state.file_manager.processed_files) > 0
-        })
-        
-        # Clear status
-        status_placeholder.success("✅ Task completed successfully!")
-        progress_bar.progress(1.0)
-    
-    # Run the async task
-    asyncio.run(run_task())
-
-# Conversation History
-if st.session_state.conversation_history:
-    with st.expander(f"📜 Conversation History ({len(st.session_state.conversation_history)} items)"):
-        for i, item in enumerate(reversed(st.session_state.conversation_history), 1):
-            files_badge = " 📁" if item.get('files_included') else ""
-            st.markdown(f"**Query {len(st.session_state.conversation_history) - i + 1}:**{files_badge} {item['user_input'][:100]}...")
-            if item['result'].get('metrics'):
-                st.caption(f"Consultations: {item['result']['metrics']['consultations_count']} | "
-                          f"Time: {item['result']['metrics']['total_time']:.1f}s")
-            st.divider()
-
-# File Management
-if st.session_state.file_manager.processed_files:
-    with st.expander("🗂️ File Management"):
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            file_summary = st.session_state.file_manager.get_file_summary()
-            st.write(f"**Files ready for analysis:** {file_summary['total_files']}")
-            
-        with col2:
-            if st.button("🗑️ Clear Files", help="Remove all uploaded files"):
-                st.session_state.file_manager.cleanup()
-                st.session_state.file_manager = FileManager(st.session_state.session_id)
-                st.rerun()
-
-# Footer
-st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center; color: #666; font-size: 0.9em;'>
-    Hydra v3 - Claude-Orchestrated Multi-Agent System with File Analysis<br>
-    🧠 One Primary Mind, Multiple Expert Consultants, 📁 Full File Analysis
-    </div>
-    """, 
-    unsafe_allow_html=True
-)                    for i, consultation in enumerate(result["consultations"], 1):
                         st.markdown(f"**Consultation {i}: {consultation['model']} - {consultation['tool']}**")
                         st.write(consultation["purpose"])
                         if consultation.get("key_insights"):
