@@ -4,9 +4,9 @@ class PlannerAgent:
 
     async def generate_plan(self, user_input):
         planning_prompt = f"""
-You are a cognitive planner. Break the following task into sequential, intelligent subtasks. Be thorough but efficient.
+You are a cognitive planner. Break this complex problem into intelligent subtasks.
 
 Task: {user_input}
 """
         plan = await self.gemini_agent.chat(planning_prompt)
-        return plan.strip().split('\n')
+        return [step for step in plan.strip().split('\n') if step.strip()]
