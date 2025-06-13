@@ -1,5 +1,5 @@
 """
-Updated ConsultationEngine with Gemini 2.5 model selection and thinking modes
+Updated ConsultationEngine with official Gemini 2.5 model selection and thinking modes
 """
 import asyncio
 import json
@@ -32,7 +32,7 @@ class ConsultationEngine:
             thinking_mode = request.context.get('thinking_mode')
             
             # Execute the consultation with thinking mode if supported
-            if hasattr(agent, 'chat') and thinking_mode:
+            if hasattr(agent, 'chat') and thinking_mode and '2.5' in request.model:
                 response = await agent.chat(prompt, thinking_mode=thinking_mode)
             else:
                 response = await agent.chat(prompt)
@@ -64,26 +64,30 @@ class ConsultationEngine:
             )
     
     def _get_gemini_variant(self, model_name: str) -> str:
-        """Map model names to Gemini variants"""
-        if "2.5-pro" in model_name or "pro" in model_name:
+        """Map model names to Gemini variants using official 2.5 models"""
+        if "2.5-pro" in model_name or ("pro" in model_name and "2.5" in model_name):
             return "2.5-pro"
-        elif "2.5-flash" in model_name or "flash" in model_name:
+        elif "2.5-flash" in model_name or ("flash" in model_name and "2.5" in model_name):
             return "2.5-flash"
+        elif "2.0-flash" in model_name:
+            return "2.0-flash"
         else:
-            return "2.5-flash"  # Default
+            return "2.5-flash"  # Default to 2.5 Flash
     
     async def _build_consultation_prompt(self, request: 'ConsultationRequest') -> str:
         """Build specialized prompts based on consultation tool"""
         
         complexity = request.context.get('complexity', 'moderate')
         keywords = request.context.get('keywords', [])
+        thinking_mode = request.context.get('thinking_mode')
         
         base_context = f"""
-You are a specialist consultant providing expert analysis.
+You are a specialist consultant providing expert analysis using {request.model}.
 
 Consultation Purpose: {request.purpose}
 Tool: {request.tool}
 Task Complexity: {complexity}
+{f"Thinking Mode: {thinking_mode}" if thinking_mode else ""}
 Context: {request.context.get('user_input', '')}
 
 Primary Agent's Approach: {request.context.get('approach', '')}
@@ -98,7 +102,7 @@ Provide deep technical analysis focusing on:
 - Performance characteristics
 - Potential improvements and optimizations
 
-Use your expertise to provide insights that complement the primary analysis.
+{'Use adaptive thinking to thoroughly analyze the problem.' if '2.5' in request.model else ''}
 
 Your specialized analysis:"""
         
@@ -110,6 +114,8 @@ Provide systematic debugging analysis:
 2. **Diagnostic Steps**: Specific steps to validate each hypothesis
 3. **Root Cause Analysis**: Methodology to identify the underlying issue
 4. **Prevention Strategies**: How to prevent similar issues
+
+{'Think step-by-step through the debugging process.' if '2.5' in request.model else ''}
 
 Your debugging analysis:"""
         
@@ -123,6 +129,7 @@ Provide professional code review focusing on:
 - 🟢 **Low Priority**: Style and documentation improvements
 
 Rate each issue by severity and provide specific remediation steps.
+{'Apply thorough thinking to identify subtle issues.' if '2.5' in request.model else ''}
 
 Your code review:"""
         
@@ -135,6 +142,8 @@ Provide extended reasoning and deep analysis:
 - **Identify Edge Cases**: Find potential failure modes and corner cases
 - **Strategic Considerations**: Long-term implications and trade-offs
 - **Risk Assessment**: Evaluate potential risks and mitigation strategies
+
+{'Use maximum thinking depth to explore all aspects of this problem.' if '2.5' in request.model else ''}
 
 Your deep analysis:"""
         
@@ -162,6 +171,8 @@ Your search analysis:"""
 Provide expert consultation in your area of specialization.
 Consider the task complexity ({complexity}) and focus on delivering
 insights that add value to the primary analysis.
+
+{'Use adaptive thinking as needed for this consultation.' if '2.5' in request.model else ''}
 
 Your analysis:"""
     
@@ -234,9 +245,6 @@ Your analysis:"""
         """Rough token estimation"""
         return len(text.split()) * 1.3
 
-
-# Keep the rest of the existing classes (WebSearchTool, ToolRegistry, etc.)
-# from the original tools_system_complete.py file...
 
 class WebSearchTool:
     """Enhanced web search with multiple APIs and fallbacks"""
@@ -448,7 +456,7 @@ class ConsultationResult:
     execution_time: float
     tokens_used: int
 
-# Tool registry and other classes remain the same...
+# Tool registry and other classes
 from enum import Enum
 
 class ToolType(Enum):
