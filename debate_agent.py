@@ -1,16 +1,24 @@
 class DebateAgent:
-    def __init__(self, gemini_agent, anthropic_agent):
-        self.gemini_agent = gemini_agent
-        self.anthropic_agent = anthropic_agent
+    def __init__(self, arbitration_agent):
+        self.arbitration_agent = arbitration_agent
 
-    async def debate(self, task, critique_a, critique_b):
-        debate_prompt = f"""
-Compare and synthesize these two critiques about the same task result. Merge their insights, resolve conflicts, and suggest a combined improvement path.
+    async def arbitrate(self, task, responses, critiques):
+        arbitration_prompt = f"""
+You are an expert arbiter. Select and synthesize the best final answer based on these candidate responses and critiques.
 
 Task: {task}
 
-Critique 1 (Claude): {critique_a}
-Critique 2 (Gemini): {critique_b}
+Responses:
+- OpenAI: {responses['OpenAI']}
+- Claude: {responses['Claude']}
+- Gemini: {responses['Gemini']}
+
+Critiques:
+- OpenAI's critique: {critiques['OpenAI']}
+- Claude's critique: {critiques['Claude']}
+- Gemini's critique: {critiques['Gemini']}
+
+Give your final best response that incorporates the strongest elements.
 """
-        merged = await self.anthropic_agent.chat(debate_prompt, max_tokens=512)
-        return merged.strip()
+        result = await self.arbitration_agent.chat(arbitration_prompt)
+        return result.strip()
