@@ -26,7 +26,7 @@ with st.sidebar:
     with st.expander("Model Configuration"):
         primary_model = st.selectbox(
             "Primary Orchestrator",
-            ["claude-4", "gpt-4o", "gemini-2.0-pro"],
+            ["claude-4", "gpt-4o", "gemini-2.5-flash", "gemini-2.5-pro"],
             index=0,
             help="The main model that orchestrates and performs work"
         )
@@ -39,8 +39,8 @@ with st.sidebar:
         
         available_consultants = st.multiselect(
             "Available Consultant Models",
-            ["gpt-4o", "gemini-2.0-pro", "gemini-2.0-flash"],
-            default=["gpt-4o", "gemini-2.0-pro"],
+            ["gpt-4o", "gemini-2.5-pro", "gemini-2.5-flash"],
+            default=["gpt-4o", "gemini-2.5-pro"],
             help="Models available for consultation"
         )
 
@@ -98,11 +98,11 @@ with st.expander("⚙️ Advanced Options"):
 # Execution
 if st.button("🚀 Execute", type="primary") and user_input:
     
-    # Initialize agents
+    # Initialize agents with upgraded Gemini
     agents = {
         "openai": OpenAIAgent(openai_key),
         "anthropic": AnthropicAgent(anthropic_key), 
-        "gemini": GeminiAgent(gemini_key)
+        "gemini": GeminiAgent(gemini_key, model_variant="2.5-flash")  # Default to 2.5 Flash
     }
     
     # Initialize memory manager
