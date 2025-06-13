@@ -66,6 +66,9 @@ class Orchestrator:
         self.tool_registry = ToolRegistry()
         self.model_selector = ModelSelector()
         
+        # File handling
+        self.uploaded_file_paths = []
+        
         # Execution state
         self.consultation_count = 0
         self.start_time = None
@@ -346,7 +349,8 @@ Then begin executing your approach.
                         "approach": approach,
                         "thinking_mode": thinking_mode,
                         "complexity": complexity,
-                        "keywords": context_keywords
+                        "keywords": context_keywords,
+                        "file_paths": getattr(self, 'uploaded_file_paths', [])
                     }
                 ))
         
