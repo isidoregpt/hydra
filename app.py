@@ -146,7 +146,7 @@ with st.expander("⚙️ Advanced Options"):
             "Thinking Depth",
             options=["minimal", "low", "medium", "high", "max"],
             value="medium",
-            help="How deeply consultant models should analyze"
+            help="How deeply Gemini 2.5 models should think (adaptive thinking)"
         )
     
     with col2:
@@ -165,11 +165,11 @@ with st.expander("⚙️ Advanced Options"):
 # Execution
 if st.button("🚀 Execute", type="primary") and user_input:
     
-    # Initialize agents with upgraded Gemini
+    # Initialize agents with correct Gemini 2.5 model
     agents = {
         "openai": OpenAIAgent(openai_key),
         "anthropic": AnthropicAgent(anthropic_key), 
-        "gemini": GeminiAgent(gemini_key, model_variant="2.5-flash")
+        "gemini": GeminiAgent(gemini_key, model_variant="2.5-flash")  # Use official 2.5 Flash
     }
     
     # Initialize memory manager
@@ -300,7 +300,7 @@ st.markdown(
     """
     <div style='text-align: center; color: #666; font-size: 0.9em;'>
     Hydra v3 - Claude-Orchestrated Multi-Agent System with File Analysis<br>
-    🧠 One Primary Mind, Multiple Expert Consultants, 📁 Full File Analysis
+    🧠 Claude + Gemini 2.5 Pro + Gemini 2.5 Flash + GPT-4o 🚀
     </div>
     """, 
     unsafe_allow_html=True
