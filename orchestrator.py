@@ -4,7 +4,7 @@ import re
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from enum import Enum
-from web_search_tool import WebSearchTool
+from tools_system_complete import WebSearchTool, ConsultationEngine, ConsultationRequest, ToolRegistry
 
 
 class TaskComplexity(Enum):
@@ -59,6 +59,10 @@ class Orchestrator:
         self.thinking_depth = thinking_depth
         self.enable_web_search = enable_web_search
         self.memory = memory
+        
+        # Initialize consultation system
+        self.consultation_engine = ConsultationEngine(agents)
+        self.tool_registry = ToolRegistry()
         
         # Execution state
         self.consultation_count = 0
@@ -133,7 +137,7 @@ class Orchestrator:
                 progress_percent = 0.3 + (0.5 * (len(consultations) / max(1, len(consultation_requests))))
                 progress_callback(f"Consulting {req.model} for {req.purpose}...", progress_percent)
             
-            consultation_result = await self._execute_consultation(req)
+            consultation_result = await self.consultation_engine.execute_consultation(req)
             consultations.append(consultation_result)
             self.consultation_count += 1
         
@@ -482,19 +486,25 @@ Final Response:
         return any(indicator in user_lower for indicator in current_info_indicators)
 
     async def _handle_web_search(self, user_input: str) -> str:
-        """Handle web search for current information."""
+        """Handle web search for current information using the consultation engine"""
         try:
-            async with WebSearchTool() as search_tool:
-                result = await search_tool.search(user_input)
-                
-                if result["type"] == "instant_answer":
-                    return result["answer"]
-                elif result["type"] == "current_info":
-                    return result["answer"]
-                elif result["type"] == "search_needed":
-                    return f"I don't have access to real-time information. {result['suggestion']}\n\nYou can search here:\n{result['search_engines'][0]}"
-                else:
-                    return result.get("fallback", "I'm unable to access current information. Please search manually.")
+            # Create a web search consultation request
+            search_request = ConsultationRequest(
+                purpose=f"Search for current information: {user_input}",
+                model="gemini-2.0-flash",  # Fast model for search
+                tool="websearch",
+                context={
+                    "user_input": user_input,
+                    "search_query": user_input,
+                    "approach": "Direct web search consultation"
+                }
+            )
+            
+            # Execute the web search consultation
+            result = await self.consultation_engine.execute_consultation(search_request)
+            
+            # Return the search result
+            return result.output
                     
         except Exception as e:
-            return f"I'm unable to access real-time information at the moment. Please check your device's clock or search for '{user_input}' online."
+            return f"I'm unable to access real-time information at the moment. Error: {str(e)}\n\nPlease search for '{user_input}' manually using your preferred search engine."
