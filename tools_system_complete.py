@@ -1,30 +1,242 @@
 """
-Complete tools system for Hydra v3 with web search and consultation capabilities
+Updated ConsultationEngine with Gemini 2.5 model selection and thinking modes
 """
 import asyncio
-import aiohttp
 import json
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
-from enum import Enum
+from typing import Dict, Any, Optional
 
-# Tool registry and base classes
-class ToolType(Enum):
-    ANALYSIS = "analysis"
-    REVIEW = "review"
-    DEBUG = "debug"
-    CREATIVE = "creative"
-    SEARCH = "search"
-    VALIDATION = "validation"
+class ConsultationEngine:
+    """Enhanced consultation engine with smart model selection"""
+    
+    def __init__(self, agents: Dict[str, Any]):
+        self.agents = agents
+        self.web_search = WebSearchTool()
+    
+    async def execute_consultation(self, request: 'ConsultationRequest') -> 'ConsultationResult':
+        """Execute a consultation with intelligent model selection and thinking modes"""
+        start_time = asyncio.get_event_loop().time()
+        
+        try:
+            # Get the appropriate agent
+            agent = self._get_agent_for_model(request.model)
+            
+            # Switch Gemini model if needed
+            if hasattr(agent, 'switch_model') and 'gemini' in request.model:
+                model_variant = self._get_gemini_variant(request.model)
+                agent.switch_model(model_variant)
+            
+            # Build consultation prompt based on tool type
+            prompt = await self._build_consultation_prompt(request)
+            
+            # Get thinking mode from context
+            thinking_mode = request.context.get('thinking_mode')
+            
+            # Execute the consultation with thinking mode if supported
+            if hasattr(agent, 'chat') and thinking_mode:
+                response = await agent.chat(prompt, thinking_mode=thinking_mode)
+            else:
+                response = await agent.chat(prompt)
+            
+            # Extract key insights
+            insights = self._extract_insights(response, request.tool)
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            
+            return ConsultationResult(
+                model=request.model,
+                tool=request.tool,
+                purpose=request.purpose,
+                output=response,
+                key_insights=insights,
+                execution_time=execution_time,
+                tokens_used=self._estimate_tokens(prompt + response)
+            )
+            
+        except Exception as e:
+            return ConsultationResult(
+                model=request.model,
+                tool=request.tool,
+                purpose=request.purpose,
+                output=f"Consultation failed: {str(e)}",
+                key_insights="Error during consultation",
+                execution_time=asyncio.get_event_loop().time() - start_time,
+                tokens_used=0
+            )
+    
+    def _get_gemini_variant(self, model_name: str) -> str:
+        """Map model names to Gemini variants"""
+        if "2.5-pro" in model_name or "pro" in model_name:
+            return "2.5-pro"
+        elif "2.5-flash" in model_name or "flash" in model_name:
+            return "2.5-flash"
+        else:
+            return "2.5-flash"  # Default
+    
+    async def _build_consultation_prompt(self, request: 'ConsultationRequest') -> str:
+        """Build specialized prompts based on consultation tool"""
+        
+        complexity = request.context.get('complexity', 'moderate')
+        keywords = request.context.get('keywords', [])
+        
+        base_context = f"""
+You are a specialist consultant providing expert analysis.
 
-@dataclass
-class Tool:
-    name: str
-    description: str
-    type: ToolType
-    best_models: List[str]
-    thinking_modes: List[str]
-    use_cases: List[str]
+Consultation Purpose: {request.purpose}
+Tool: {request.tool}
+Task Complexity: {complexity}
+Context: {request.context.get('user_input', '')}
+
+Primary Agent's Approach: {request.context.get('approach', '')}
+"""
+        
+        if request.tool == "analyze":
+            return f"""{base_context}
+
+Provide deep technical analysis focusing on:
+- Architecture and design patterns
+- Code quality and maintainability  
+- Performance characteristics
+- Potential improvements and optimizations
+
+Use your expertise to provide insights that complement the primary analysis.
+
+Your specialized analysis:"""
+        
+        elif request.tool == "debug":
+            return f"""{base_context}
+
+Provide systematic debugging analysis:
+1. **Hypothesis Ranking**: Most likely causes first, with confidence levels
+2. **Diagnostic Steps**: Specific steps to validate each hypothesis
+3. **Root Cause Analysis**: Methodology to identify the underlying issue
+4. **Prevention Strategies**: How to prevent similar issues
+
+Your debugging analysis:"""
+        
+        elif request.tool == "codereview":
+            return f"""{base_context}
+
+Provide professional code review focusing on:
+- 🔴 **Critical Issues**: Security vulnerabilities, data corruption risks
+- 🟠 **High Priority**: Performance bottlenecks, logic errors
+- 🟡 **Medium Priority**: Code quality, maintainability issues
+- 🟢 **Low Priority**: Style and documentation improvements
+
+Rate each issue by severity and provide specific remediation steps.
+
+Your code review:"""
+        
+        elif request.tool == "thinkdeep":
+            return f"""{base_context}
+
+Provide extended reasoning and deep analysis:
+- **Challenge Assumptions**: Question underlying assumptions in the approach
+- **Explore Alternatives**: Consider different strategies and approaches
+- **Identify Edge Cases**: Find potential failure modes and corner cases
+- **Strategic Considerations**: Long-term implications and trade-offs
+- **Risk Assessment**: Evaluate potential risks and mitigation strategies
+
+Your deep analysis:"""
+        
+        elif request.tool == "websearch":
+            # Special handling for web search tool
+            search_query = request.context.get('search_query', request.purpose)
+            async with self.web_search as search_tool:
+                search_result = await search_tool.search(search_query)
+                
+                return f"""{base_context}
+
+Web Search Results for: {search_query}
+{json.dumps(search_result, indent=2)}
+
+Based on these search results, provide analysis and recommendations:
+- Summarize the key findings
+- Identify actionable information
+- Suggest next steps or additional searches if needed
+
+Your search analysis:"""
+        
+        else:
+            return f"""{base_context}
+
+Provide expert consultation in your area of specialization.
+Consider the task complexity ({complexity}) and focus on delivering
+insights that add value to the primary analysis.
+
+Your analysis:"""
+    
+    def _get_agent_for_model(self, model_name: str):
+        """Map model names to appropriate agents"""
+        if "gpt" in model_name.lower() or "4o" in model_name:
+            return self.agents["openai"]
+        elif "gemini" in model_name.lower() or "flash" in model_name or "pro" in model_name:
+            return self.agents["gemini"]
+        elif "claude" in model_name.lower():
+            return self.agents["anthropic"]
+        else:
+            # Default to anthropic
+            return self.agents["anthropic"]
+    
+    def _extract_insights(self, response: str, tool: str) -> str:
+        """Extract key insights based on tool type"""
+        lines = response.split('\n')
+        insights = []
+        
+        # Tool-specific insight extraction with enhanced patterns
+        if tool == "codereview":
+            # Look for severity indicators and security issues
+            for line in lines:
+                line_lower = line.lower()
+                if any(indicator in line_lower for indicator in ['🔴', '🟠', 'critical', 'security', 'vulnerability', 'high priority']):
+                    insights.append(line.strip())
+                elif any(pattern in line_lower for pattern in ['issue:', 'problem:', 'concern:', 'risk:']):
+                    insights.append(line.strip())
+                    
+        elif tool == "debug":
+            # Look for hypotheses, root causes, and diagnostic steps
+            for line in lines:
+                line_lower = line.lower()
+                if any(indicator in line_lower for indicator in ['hypothesis', 'root cause', 'likely cause', 'diagnostic']):
+                    insights.append(line.strip())
+                elif any(pattern in line_lower for pattern in ['1.', '2.', '3.']) and any(word in line_lower for word in ['cause', 'issue', 'problem']):
+                    insights.append(line.strip())
+                    
+        elif tool == "thinkdeep":
+            # Look for strategic insights and assumptions
+            for line in lines:
+                line_lower = line.lower()
+                if any(indicator in line_lower for indicator in ['assumption', 'alternative', 'edge case', 'risk', 'strategy']):
+                    insights.append(line.strip())
+                elif line.startswith('**') and line.endswith('**'):  # Bold headings
+                    insights.append(line.strip())
+                    
+        elif tool == "analyze":
+            # Look for architectural and performance insights
+            for line in lines:
+                line_lower = line.lower()
+                if any(indicator in line_lower for indicator in ['architecture', 'pattern', 'performance', 'optimization', 'improvement']):
+                    insights.append(line.strip())
+                    
+        else:
+            # General insight extraction
+            for line in lines:
+                line_lower = line.lower()
+                if any(keyword in line_lower for keyword in ['key', 'important', 'critical', 'recommend', 'suggest', 'conclusion']):
+                    insights.append(line.strip())
+                elif line.startswith('**') or line.startswith('##'):  # Headers
+                    insights.append(line.strip())
+        
+        # Return top insights, ensuring we have meaningful content
+        filtered_insights = [insight for insight in insights if len(insight) > 10]
+        return '\n'.join(filtered_insights[:4])  # Top 4 insights
+    
+    def _estimate_tokens(self, text: str) -> int:
+        """Rough token estimation"""
+        return len(text.split()) * 1.3
+
+
+# Keep the rest of the existing classes (WebSearchTool, ToolRegistry, etc.)
+# from the original tools_system_complete.py file...
 
 class WebSearchTool:
     """Enhanced web search with multiple APIs and fallbacks"""
@@ -33,6 +245,7 @@ class WebSearchTool:
         self.session = None
     
     async def __aenter__(self):
+        import aiohttp
         self.session = aiohttp.ClientSession()
         return self
     
@@ -45,6 +258,7 @@ class WebSearchTool:
         Perform web search with multiple fallback strategies
         """
         if not self.session:
+            import aiohttp
             self.session = aiohttp.ClientSession()
         
         # Try different search strategies based on query type
@@ -102,9 +316,36 @@ class WebSearchTool:
             ]
         }
     
+    def _is_date_time_query(self, query: str) -> bool:
+        """Check if query is asking for current date/time"""
+        query_lower = query.lower()
+        indicators = [
+            'today', 'date', 'time', 'current date', 'what day',
+            'today\'s date', 'what time', 'current time', 'now'
+        ]
+        return any(indicator in query_lower for indicator in indicators)
+    
+    def _is_technical_query(self, query: str) -> bool:
+        """Check if query is technical/programming related"""
+        query_lower = query.lower()
+        tech_indicators = [
+            'python', 'javascript', 'react', 'api', 'code', 'programming',
+            'framework', 'library', 'database', 'sql', 'html', 'css',
+            'docker', 'kubernetes', 'aws', 'github', 'git'
+        ]
+        return any(indicator in query_lower for indicator in tech_indicators)
+    
+    def _is_news_query(self, query: str) -> bool:
+        """Check if query is asking for news/current events"""
+        query_lower = query.lower()
+        news_indicators = [
+            'news', 'latest', 'recent', 'current events', 'breaking',
+            'update', 'today\'s news', 'what happened'
+        ]
+        return any(indicator in query_lower for indicator in news_indicators)
+    
     async def _handle_technical_query(self, query: str) -> Dict:
         """Handle technical documentation queries"""
-        # Extract technology keywords
         tech_keywords = self._extract_tech_keywords(query)
         
         return {
@@ -162,34 +403,6 @@ class WebSearchTool:
             ]
         }
     
-    def _is_date_time_query(self, query: str) -> bool:
-        """Check if query is asking for current date/time"""
-        query_lower = query.lower()
-        indicators = [
-            'today', 'date', 'time', 'current date', 'what day',
-            'today\'s date', 'what time', 'current time', 'now'
-        ]
-        return any(indicator in query_lower for indicator in indicators)
-    
-    def _is_technical_query(self, query: str) -> bool:
-        """Check if query is technical/programming related"""
-        query_lower = query.lower()
-        tech_indicators = [
-            'python', 'javascript', 'react', 'api', 'code', 'programming',
-            'framework', 'library', 'database', 'sql', 'html', 'css',
-            'docker', 'kubernetes', 'aws', 'github', 'git'
-        ]
-        return any(indicator in query_lower for indicator in tech_indicators)
-    
-    def _is_news_query(self, query: str) -> bool:
-        """Check if query is asking for news/current events"""
-        query_lower = query.lower()
-        news_indicators = [
-            'news', 'latest', 'recent', 'current events', 'breaking',
-            'update', 'today\'s news', 'what happened'
-        ]
-        return any(indicator in query_lower for indicator in news_indicators)
-    
     def _extract_tech_keywords(self, query: str) -> List[str]:
         """Extract technology keywords from query"""
         common_techs = [
@@ -212,169 +425,11 @@ class WebSearchTool:
             "Check if you're connected to the internet"
         ]
 
-class ConsultationEngine:
-    """Manages consultation requests between primary and specialist models"""
-    
-    def __init__(self, agents: Dict[str, Any]):
-        self.agents = agents
-        self.web_search = WebSearchTool()
-    
-    async def execute_consultation(self, request: 'ConsultationRequest') -> 'ConsultationResult':
-        """Execute a consultation with a specialist model"""
-        start_time = asyncio.get_event_loop().time()
-        
-        try:
-            # Get the appropriate agent
-            agent = self._get_agent_for_model(request.model)
-            
-            # Build consultation prompt based on tool type
-            prompt = await self._build_consultation_prompt(request)
-            
-            # Execute the consultation
-            response = await agent.chat(prompt)
-            
-            # Extract key insights
-            insights = self._extract_insights(response, request.tool)
-            
-            execution_time = asyncio.get_event_loop().time() - start_time
-            
-            return ConsultationResult(
-                model=request.model,
-                tool=request.tool,
-                purpose=request.purpose,
-                output=response,
-                key_insights=insights,
-                execution_time=execution_time,
-                tokens_used=self._estimate_tokens(prompt + response)
-            )
-            
-        except Exception as e:
-            return ConsultationResult(
-                model=request.model,
-                tool=request.tool,
-                purpose=request.purpose,
-                output=f"Consultation failed: {str(e)}",
-                key_insights="Error during consultation",
-                execution_time=asyncio.get_event_loop().time() - start_time,
-                tokens_used=0
-            )
-    
-    async def _build_consultation_prompt(self, request: 'ConsultationRequest') -> str:
-        """Build specialized prompts based on consultation tool"""
-        
-        base_context = f"""
-You are a specialist consultant providing expert analysis.
-
-Consultation Purpose: {request.purpose}
-Tool: {request.tool}
-Context: {request.context.get('user_input', '')}
-
-Primary Agent's Approach: {request.context.get('approach', '')}
-"""
-        
-        if request.tool == "analyze":
-            return f"""{base_context}
-
-Provide deep technical analysis focusing on:
-- Architecture and design patterns
-- Code quality and maintainability
-- Performance characteristics
-- Potential improvements
-
-Your specialized analysis:"""
-        
-        elif request.tool == "debug":
-            return f"""{base_context}
-
-Provide systematic debugging analysis:
-1. Hypothesis ranking (most likely causes first)
-2. Diagnostic steps to validate each hypothesis
-3. Root cause analysis methodology
-4. Prevention strategies
-
-Your debugging analysis:"""
-        
-        elif request.tool == "codereview":
-            return f"""{base_context}
-
-Provide professional code review:
-- Security vulnerabilities (🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low)
-- Performance issues and optimizations
-- Code quality and best practices
-- Maintainability concerns
-
-Your code review:"""
-        
-        elif request.tool == "thinkdeep":
-            return f"""{base_context}
-
-Provide extended reasoning and analysis:
-- Challenge assumptions
-- Explore alternative approaches
-- Identify edge cases and risks
-- Strategic considerations
-
-Your deep analysis:"""
-        
-        elif request.tool == "websearch":
-            # Special handling for web search tool
-            search_query = request.context.get('search_query', request.purpose)
-            async with self.web_search as search_tool:
-                search_result = await search_tool.search(search_query)
-                
-                return f"""{base_context}
-
-Web Search Results for: {search_query}
-{json.dumps(search_result, indent=2)}
-
-Based on these search results, provide analysis and recommendations:"""
-        
-        else:
-            return f"""{base_context}
-
-Provide expert consultation in your area of specialization.
-
-Your analysis:"""
-    
-    def _get_agent_for_model(self, model_name: str):
-        """Map model names to appropriate agents"""
-        model_map = {
-            "gpt-4o": "openai",
-            "gemini-2.0-pro": "gemini", 
-            "gemini-2.0-flash": "gemini",
-            "claude-4": "anthropic"
-        }
-        
-        agent_type = model_map.get(model_name, "anthropic")
-        return self.agents[agent_type]
-    
-    def _extract_insights(self, response: str, tool: str) -> str:
-        """Extract key insights based on tool type"""
-        lines = response.split('\n')
-        insights = []
-        
-        # Tool-specific insight extraction
-        if tool == "codereview":
-            for line in lines:
-                if any(indicator in line.lower() for indicator in ['🔴', '🟠', 'critical', 'security', 'vulnerability']):
-                    insights.append(line.strip())
-        elif tool == "debug":
-            for line in lines:
-                if any(indicator in line.lower() for indicator in ['root cause', 'hypothesis', 'likely', 'issue']):
-                    insights.append(line.strip())
-        else:
-            # General insight extraction
-            for line in lines:
-                if any(keyword in line.lower() for keyword in ['key', 'important', 'critical', 'recommend', 'suggest']):
-                    insights.append(line.strip())
-        
-        return '\n'.join(insights[:3])  # Top 3 insights
-    
-    def _estimate_tokens(self, text: str) -> int:
-        """Rough token estimation"""
-        return len(text.split()) * 1.3
 
 # Data models for consultation system
+from dataclasses import dataclass
+from typing import List
+
 @dataclass
 class ConsultationRequest:
     purpose: str
@@ -393,6 +448,26 @@ class ConsultationResult:
     execution_time: float
     tokens_used: int
 
+# Tool registry and other classes remain the same...
+from enum import Enum
+
+class ToolType(Enum):
+    ANALYSIS = "analysis"
+    REVIEW = "review"
+    DEBUG = "debug"
+    CREATIVE = "creative"
+    SEARCH = "search"
+    VALIDATION = "validation"
+
+@dataclass
+class Tool:
+    name: str
+    description: str
+    type: ToolType
+    best_models: List[str]
+    thinking_modes: List[str]
+    use_cases: List[str]
+
 class ToolRegistry:
     """Registry of available consultation tools"""
     
@@ -402,7 +477,7 @@ class ToolRegistry:
                 name="analyze",
                 description="Deep analysis of code, architecture, and systems",
                 type=ToolType.ANALYSIS,
-                best_models=["gemini-2.0-pro", "gpt-4o"],
+                best_models=["gemini-2.5-pro", "gemini-2.5-flash", "gpt-4o"],
                 thinking_modes=["medium", "high", "max"],
                 use_cases=[
                     "Understanding complex codebases",
@@ -416,7 +491,7 @@ class ToolRegistry:
                 name="codereview", 
                 description="Professional code review with security and quality focus",
                 type=ToolType.REVIEW,
-                best_models=["gemini-2.0-pro", "gpt-4o"],
+                best_models=["gemini-2.5-pro", "gemini-2.5-flash", "gpt-4o"],
                 thinking_modes=["medium", "high"],
                 use_cases=[
                     "Security vulnerability assessment",
@@ -430,7 +505,7 @@ class ToolRegistry:
                 name="debug",
                 description="Root cause analysis and systematic debugging",
                 type=ToolType.DEBUG, 
-                best_models=["gpt-4o", "gemini-2.0-pro"],
+                best_models=["gpt-4o", "gemini-2.5-pro", "gemini-2.5-flash"],
                 thinking_modes=["medium", "high"],
                 use_cases=[
                     "Error diagnosis and resolution",
@@ -444,7 +519,7 @@ class ToolRegistry:
                 name="thinkdeep",
                 description="Extended reasoning for complex problems",
                 type=ToolType.ANALYSIS,
-                best_models=["gemini-2.0-pro"],
+                best_models=["gemini-2.5-pro"],
                 thinking_modes=["high", "max"],
                 use_cases=[
                     "Complex architectural decisions",
@@ -458,7 +533,7 @@ class ToolRegistry:
                 name="websearch",
                 description="Web search for current information",
                 type=ToolType.SEARCH,
-                best_models=["gemini-2.0-flash", "gpt-4o"],
+                best_models=["gemini-2.5-flash", "gpt-4o"],
                 thinking_modes=["low", "medium"],
                 use_cases=[
                     "Current documentation lookup",
