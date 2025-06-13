@@ -6,7 +6,7 @@ class AnthropicAgent:
 
     def chat(self, prompt):
         response = self.client.messages.create(
-            model="claude-3.5-sonnet-20240610",
+            model="claude-opus-4-20250514",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}]
         )
