@@ -3,7 +3,7 @@ Updated ConsultationEngine with Gemini 2.5 model selection and thinking modes
 """
 import asyncio
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 class ConsultationEngine:
     """Enhanced consultation engine with smart model selection"""
