@@ -3,11 +3,12 @@ import uuid
 from models.openai_agent import OpenAIAgent
 from models.anthropic_agent import AnthropicAgent
 from models.gemini_agent import GeminiAgent
-from task_manager import TaskManager
+from planner_agent import PlannerAgent
+from reflection_agent import ReflectionAgent
 from orchestrator import Orchestrator
 from memory.memory_manager import MemoryManager
 
-st.title("🧠 Hydra Phase 2 - Dynamic Multi-Model AI Orchestrator")
+st.title("🧠 Hydra Phase 3 - Autonomous Multi-Agent AI System")
 
 with st.form("api_form"):
     openai_key = st.text_input("OpenAI API Key", type="password")
@@ -19,7 +20,7 @@ if not all([openai_key, anthropic_key, gemini_key]):
     st.warning("Please enter all API keys to continue.")
     st.stop()
 
-user_input = st.text_area("Enter your problem/task for Hydra to solve:")
+user_input = st.text_area("Enter your complex problem for Hydra:")
 memory = MemoryManager()
 
 if "session_id" not in st.session_state:
@@ -29,13 +30,14 @@ if st.button("Run Hydra") and user_input:
     openai_agent = OpenAIAgent(openai_key)
     anthropic_agent = AnthropicAgent(anthropic_key)
     gemini_agent = GeminiAgent(gemini_key)
-    task_manager = TaskManager(gemini_agent)
-    orchestrator = Orchestrator(openai_agent, anthropic_agent, gemini_agent, task_manager)
+    planner_agent = PlannerAgent(gemini_agent)
+    reflection_agent = ReflectionAgent(anthropic_agent)
+    orchestrator = Orchestrator(openai_agent, anthropic_agent, gemini_agent, planner_agent, reflection_agent)
 
     result = orchestrator.run(user_input)
     memory.save_session(st.session_state.session_id, result)
 
-    st.header("🧠 Multi-Agent Response")
-    for stage, output in result.items():
-        st.subheader(stage)
-        st.write(output)
+    st.header("🧠 Hydra Full Autonomous Output")
+    for section, content in result.items():
+        st.subheader(section)
+        st.write(content)
