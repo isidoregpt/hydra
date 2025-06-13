@@ -3,4 +3,4 @@ anthropic
 google-generativeai
 streamlit
 python-dotenv
-tqdm
+asyncio
