@@ -282,4 +282,200 @@ class Orchestrator:
         
         return consultations
 
-    async def _round3_consensus(self, user_input: str, round1_consultations: List[ConsultationResult], round2_consultations: List[ConsultationResult], progress_callback: Optional[
+    async def _round3_consensus(self, user_input: str, round1_consultations: List[ConsultationResult], round2_consultations: List[ConsultationResult], progress_callback: Optional[Callable] = None) -> List[ConsultationResult]:
+        """Round 3: Models work toward consensus"""
+        consultations = []
+        
+        # Create comprehensive summary of all previous rounds
+        all_previous = self._create_comprehensive_summary(round1_consultations, round2_consultations)
+        
+        # Select the best model for consensus building (prefer Claude Sonnet 4 or Gemini 2.5 Pro)
+        consensus_model = "claude-sonnet-4" if "claude-sonnet-4" in self.available_consultants else \
+                         "gemini-2.5-pro" if "gemini-2.5-pro" in self.available_consultants else \
+                         self.available_consultants[0]
+        
+        consultation_request = ConsultationRequest(
+            purpose=f"Consensus building (Round 3) by {consensus_model}",
+            model=consensus_model,
+            tool="thinkdeep" if "gemini" in consensus_model else "analyze",
+            context={
+                "user_input": user_input,
+                "all_previous_rounds": all_previous,
+                "thinking_mode": "max" if "gemini" in consensus_model else None,
+                "round": 3,
+                "instruction": """Based on all previous analyses and cross-reviews, build a consensus.
+
+                Your consensus-building tasks:
+                1. **Identify Strong Consensus**: What do all models agree on?
+                2. **Resolve Contradictions**: Where models disagree, weigh evidence and expertise
+                3. **Integrate Best Insights**: Combine the strongest points from all perspectives
+                4. **Fill Gaps**: Address any important aspects that were missed
+                5. **Create Unified Recommendations**: Provide coherent, actionable guidance
+                6. **Note Uncertainties**: Highlight any remaining areas of disagreement
+                
+                Build a consensus that incorporates the collective wisdom of all models."""
+            }
+        )
+        
+        if progress_callback:
+            progress_callback(f"Round 3: {consensus_model} building consensus...", 0.75)
+        
+        consultation_result = await self.consultation_engine.execute_consultation(consultation_request)
+        consultations.append(consultation_result)
+        self.consultation_count += 1
+        
+        return consultations
+
+    async def _synthesize_collaborative_result(self, user_input: str, all_consultations: List[ConsultationResult]) -> str:
+        """Claude Opus 4 synthesizes the final collaborative result"""
+        
+        # Organize consultations by round
+        round1 = [c for c in all_consultations if "Round 1" in c.purpose]
+        round2 = [c for c in all_consultations if "Round 2" in c.purpose]
+        round3 = [c for c in all_consultations if "Round 3" in c.purpose]
+        
+        synthesis_prompt = f"""
+You are Claude Opus 4, synthesizing the results of a comprehensive multi-round collaborative analysis.
+
+USER REQUEST: {user_input}
+
+=== MULTI-ROUND COLLABORATIVE ANALYSIS ===
+
+ROUND 1 - INDEPENDENT ANALYSES:
+{self._format_consultations_for_synthesis(round1)}
+
+ROUND 2 - CROSS-REVIEWS AND CRITIQUES:
+{self._format_consultations_for_synthesis(round2)}
+
+ROUND 3 - CONSENSUS BUILDING:
+{self._format_consultations_for_synthesis(round3)}
+
+=== YOUR SYNTHESIS TASK ===
+
+As Claude Opus 4, provide the definitive collaborative response that:
+
+1. **Incorporates Collective Intelligence**: Synthesize insights from all models across all rounds
+2. **Highlights Expert Consensus**: Emphasize areas where multiple models strongly agreed
+3. **Resolves Remaining Conflicts**: Use your superior reasoning to address any contradictions
+4. **Delivers Exceptional Value**: Provide clear, actionable, and comprehensive guidance
+5. **Acknowledges the Collaborative Process**: Note how multi-round analysis enhanced the result
+6. **Demonstrates Superior Reasoning**: Show why this collaborative approach produces better outcomes
+
+Your final collaborative synthesis:
+"""
+        
+        primary_agent = self._get_agent(self.primary_model)
+        final_response = await primary_agent.chat(synthesis_prompt, max_tokens=4096)
+        
+        self.primary_tokens = self._estimate_tokens(synthesis_prompt + final_response)
+        
+        # Add all consultation tokens
+        for consultation in all_consultations:
+            self.total_tokens += consultation.tokens_used
+        self.total_tokens += self.primary_tokens
+        
+        return final_response
+
+    def _create_detailed_round_summary(self, consultations: List[ConsultationResult], title: str) -> str:
+        """Create detailed summary of consultation results"""
+        summary = f"\n=== {title} ===\n"
+        for consultation in consultations:
+            summary += f"\n**{consultation.model}**:\n"
+            summary += f"Key Insights: {consultation.key_insights}\n"
+            summary += f"Analysis: {consultation.output[:400]}{'...' if len(consultation.output) > 400 else ''}\n"
+            summary += "---\n"
+        return summary
+
+    def _create_comprehensive_summary(self, round1: List[ConsultationResult], round2: List[ConsultationResult]) -> str:
+        """Create comprehensive summary of all previous rounds"""
+        summary = self._create_detailed_round_summary(round1, "Round 1: Independent Analyses")
+        summary += self._create_detailed_round_summary(round2, "Round 2: Cross-Reviews and Refinements")
+        return summary
+
+    def _format_consultations_for_synthesis(self, consultations: List[ConsultationResult]) -> str:
+        """Format consultations for the final synthesis"""
+        if not consultations:
+            return "No consultations in this round.\n"
+        
+        formatted = ""
+        for consultation in consultations:
+            formatted += f"\n**{consultation.model}** ({consultation.purpose}):\n"
+            formatted += f"Key Insights: {consultation.key_insights}\n"
+            formatted += f"Analysis: {consultation.output[:300]}{'...' if len(consultation.output) > 300 else ''}\n"
+            formatted += "---\n"
+        return formatted
+
+    async def _handle_simple_query(self, user_input: str, session_id: str, progress_callback: Optional[Callable] = None) -> Dict[str, Any]:
+        """Handle simple time queries without multi-round consultation"""
+        if progress_callback:
+            progress_callback("Handling simple query...", 0.5)
+        
+        web_result = await self._handle_web_search(user_input)
+        
+        if progress_callback:
+            progress_callback("Complete!", 1.0)
+        
+        return {
+            "primary_output": web_result,
+            "consultations": [],
+            "collaboration_rounds": {"simple_query": True},
+            "metrics": {
+                "total_time": time.time() - self.start_time,
+                "consultations_count": 0,
+                "primary_tokens": 0,
+                "total_tokens": 0,
+                "task_complexity": "simple_query"
+            },
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "session_id": session_id
+        }
+
+    def _is_simple_time_query(self, user_input: str) -> bool:
+        """Check if this is ONLY asking for current time/date"""
+        user_lower = user_input.lower().strip()
+        simple_time_queries = [
+            'what time is it',
+            'current time',
+            'what day is it',
+            'today\'s date',
+            'what date is it'
+        ]
+        return any(query in user_lower for query in simple_time_queries) and len(user_input) < 50
+
+    def _get_agent(self, model_name: str):
+        """Get the appropriate agent for a model"""
+        model_map = {
+            "claude-opus-4": "anthropic",
+            "claude-sonnet-4": "anthropic",
+            "claude-4": "anthropic",
+            "gpt-4o": "openai", 
+            "gemini-2.5-pro": "gemini",
+            "gemini-2.5-flash": "gemini"
+        }
+        
+        agent_type = model_map.get(model_name, "anthropic")
+        return self.agents[agent_type]
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Rough token estimation"""
+        return int(len(text.split()) * 1.3)
+
+    async def _handle_web_search(self, user_input: str) -> str:
+        """Handle simple time queries"""
+        try:
+            search_request = ConsultationRequest(
+                purpose=f"Get current time/date: {user_input}",
+                model="gemini-2.5-flash",
+                tool="websearch",
+                context={
+                    "user_input": user_input,
+                    "search_query": user_input,
+                    "approach": "Direct time query"
+                }
+            )
+            
+            result = await self.consultation_engine.execute_consultation(search_request)
+            return result.output
+                    
+        except Exception as e:
+            return f"I'm unable to access real-time information at the moment. Error: {str(e)}"
